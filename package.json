@@ -1,0 +1,32 @@
+{
+  "name": "pos-soa",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sales & Customer Service — POS Local-First sobre Arquitectura Orientada al Servicio",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "infra:reset": "docker compose -f infra/docker-compose.yml down -v",
+    "infra:logs": "docker compose -f infra/docker-compose.yml logs -f",
+    "spike": "pnpm --filter \"./spikes/*\" test",
+    "contratos:lint": "redocly lint",
+    "contratos:tipos": "openapi-typescript",
+    "contratos:xslt": "pnpm --filter @pos/xml-kit compilar-xslt",
+    "prepare": "pnpm run contratos:tipos && pnpm run contratos:xslt"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^2.49.0",
+    "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

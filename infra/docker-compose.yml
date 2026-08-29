@@ -1,0 +1,53 @@
+name: pos-soa
+
+services:
+  # ── Persistencia ──────────────────────────────────────────────────────
+  # Una instancia, una base por servicio (CLAUDE.md §4.6).
+  # En producción cada servicio tendría su propia instancia; en desarrollo
+  # la separación lógica basta para hacer cumplir la autonomía.
+  postgres:
+    image: postgres:16-alpine
+    container_name: pos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pos_dev_local}
+      POSTGRES_DB: postgres
+      # Evita que el locale rompa los índices de texto
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-datos:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pos} -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── Mensajería asíncrona ──────────────────────────────────────────────
+  # Base del ESB: topic exchange para ruteo, DLQ para mensajes fallidos.
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: pos-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-pos}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-pos_dev_local}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"      # AMQP
+      - "${RABBITMQ_UI_PORT:-15672}:15672" # Consola de administración
+    volumes:
+      - rabbitmq-datos:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  postgres-datos:
+  rabbitmq-datos:

@@ -1,0 +1,11 @@
+packages:
+  - 'packages/*'
+  - 'servicios/entidad/*'
+  - 'servicios/tarea/*'
+  - 'servicios/utilidad/*'
+  - 'esb'
+  - 'registro'
+  - 'terminal-pos'
+  - 'spikes/*'
+allowBuilds:
+  esbuild: true

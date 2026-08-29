@@ -1,0 +1,42 @@
+# Configuracion unica de los contratos REST del inventario.
+# Gobierna dos cosas a la vez:
+#   - `redocly lint`        calidad del contrato
+#   - `openapi-typescript`  generacion de tipos hacia @pos/contracts
+#
+# Contract-first: si el contrato no pasa el lint, no se implementa (CLAUDE.md §9.1.1).
+
+apis:
+  validacion-documento@v1:
+    root: contratos/openapi/validacion-documento-v1.yaml
+    x-openapi-ts:
+      output: packages/contracts/src/generado/validacion-documento-v1.ts
+
+  seguridad@v1:
+    root: contratos/openapi/seguridad-v1.yaml
+    x-openapi-ts:
+      output: packages/contracts/src/generado/seguridad-v1.ts
+
+  auditoria@v1:
+    root: contratos/openapi/auditoria-v1.yaml
+    x-openapi-ts:
+      output: packages/contracts/src/generado/auditoria-v1.ts
+
+extends:
+  - recommended
+
+rules:
+  # ── Ruido de desarrollo, apagado a proposito ──────────────────────
+  # Los servidores de desarrollo apuntan a localhost.
+  no-server-example.com: off
+  # /health no necesita respuestas de error declaradas.
+  operation-4xx-response: off
+  # Es un proyecto academico, no una API publica con licencia.
+  info-license: off
+
+  # ── Reglas que SI exigimos ────────────────────────────────────────
+  # operationId es el nombre por el que referencian la operacion el ESB,
+  # el registro UDDI y los tipos generados. Sin el, no hay contrato.
+  operation-operationId: error
+  operation-operationId-unique: error
+  operation-summary: error
+  struct: error
