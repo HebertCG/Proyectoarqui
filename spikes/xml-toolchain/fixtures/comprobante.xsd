@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="urn:pos:ventas:comprobante:v1"
+           targetNamespace="urn:pos:ventas:comprobante:v1"
+           elementFormDefault="qualified">
+
+  <!-- Tipos de identificador de cliente (RF-CRM-01) -->
+  <xs:simpleType name="TipoDocumento">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="DNI"/>
+      <xs:enumeration value="RUC"/>
+      <xs:enumeration value="GENERICO"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Tipos de comprobante (RF-POS-17) -->
+  <xs:simpleType name="TipoComprobante">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="BOLETA"/>
+      <xs:enumeration value="FACTURA"/>
+      <xs:enumeration value="NOTA_VENTA"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- DNI: exactamente 8 dígitos (RF-CRM-02) -->
+  <xs:simpleType name="NumeroDNI">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9]{8}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- RUC: 11 dígitos con prefijo válido SUNAT (RF-CRM-02) -->
+  <xs:simpleType name="NumeroRUC">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="(10|15|17|20)[0-9]{9}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="NumeroDocumento">
+    <xs:union memberTypes="NumeroDNI NumeroRUC"/>
+  </xs:simpleType>
+
+  <!-- Serie por caja: B001 / F001 / NV01 (arquitectura §3) -->
+  <xs:simpleType name="Serie">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[BFN][A-Z0-9]{3}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Monto">
+    <xs:restriction base="xs:decimal">
+      <xs:minInclusive value="0"/>
+      <xs:fractionDigits value="2"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="Cliente">
+    <xs:sequence>
+      <xs:element name="tipoDocumento" type="TipoDocumento"/>
+      <xs:element name="numeroDocumento" type="NumeroDocumento" minOccurs="0"/>
+      <xs:element name="razonSocial" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="Linea">
+    <xs:sequence>
+      <xs:element name="sku" type="xs:string"/>
+      <xs:element name="descripcion" type="xs:string"/>
+      <xs:element name="cantidad" type="xs:positiveInteger"/>
+      <xs:element name="precioUnitario" type="Monto"/>
+      <xs:element name="importe" type="Monto"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="Comprobante">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="uuid" type="xs:string"/>
+        <xs:element name="tipoComprobante" type="TipoComprobante"/>
+        <xs:element name="serie" type="Serie"/>
+        <xs:element name="correlativo" type="xs:positiveInteger"/>
+        <xs:element name="fechaEmision" type="xs:date"/>
+        <xs:element name="cliente" type="Cliente"/>
+        <xs:element name="lineas">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="linea" type="Linea" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="totalGravado" type="Monto"/>
+        <xs:element name="totalIgv" type="Monto"/>
+        <xs:element name="total" type="Monto"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WSDL del EInvoicing.Service, modelado sobre el billService real de SUNAT.
+  Operaciones: sendBill (envío del comprobante) y getStatus (consulta por ticket).
+  CLAUDE.md §5.1 — este es el servicio designado para SOAP.
+-->
+<wsdl:definitions
+    name="billService"
+    targetNamespace="urn:pos:einvoicing:bill:v1"
+    xmlns:tns="urn:pos:einvoicing:bill:v1"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/">
+
+  <wsdl:types>
+    <xsd:schema targetNamespace="urn:pos:einvoicing:bill:v1"
+                elementFormDefault="qualified">
+
+      <xsd:element name="sendBill">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="fileName" type="xsd:string"/>
+            <xsd:element name="contentFile" type="xsd:base64Binary"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="sendBillResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="applicationResponse" type="xsd:base64Binary"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="getStatus">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="ticket" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="getStatusResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="statusCode" type="xsd:string"/>
+            <xsd:element name="content" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+    </xsd:schema>
+  </wsdl:types>
+
+  <wsdl:message name="sendBillRequest">
+    <wsdl:part name="parameters" element="tns:sendBill"/>
+  </wsdl:message>
+  <wsdl:message name="sendBillResponse">
+    <wsdl:part name="parameters" element="tns:sendBillResponse"/>
+  </wsdl:message>
+  <wsdl:message name="getStatusRequest">
+    <wsdl:part name="parameters" element="tns:getStatus"/>
+  </wsdl:message>
+  <wsdl:message name="getStatusResponse">
+    <wsdl:part name="parameters" element="tns:getStatusResponse"/>
+  </wsdl:message>
+
+  <wsdl:portType name="billPortType">
+    <wsdl:operation name="sendBill">
+      <wsdl:input message="tns:sendBillRequest"/>
+      <wsdl:output message="tns:sendBillResponse"/>
+    </wsdl:operation>
+    <wsdl:operation name="getStatus">
+      <wsdl:input message="tns:getStatusRequest"/>
+      <wsdl:output message="tns:getStatusResponse"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="billSoapBinding" type="tns:billPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="sendBill">
+      <soap:operation soapAction="urn:sendBill"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="getStatus">
+      <soap:operation soapAction="urn:getStatus"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="billService">
+    <wsdl:port name="billPort" binding="tns:billSoapBinding">
+      <soap:address location="http://localhost:8099/ol-ti-itcpe/billService"/>
+    </wsdl:port>
+  </wsdl:service>
+
+</wsdl:definitions>

@@ -1,0 +1,20 @@
+{
+  "name": "spike-xml-toolchain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Spike: valida que XSD, XSLT, XPath y XQuery funcionan en Windows sin toolchain nativo",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fontoxpath": "^3.33.0",
+    "saxon-js": "^2.7.0",
+    "slimdom": "^4.3.0",
+    "xmllint-wasm": "^5.0.0",
+    "xslt3": "^2.7.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}

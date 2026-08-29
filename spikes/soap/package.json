@@ -1,0 +1,16 @@
+{
+  "name": "spike-soap",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Spike: node-soap expone un WSDL propio y lo consume con WS-Security",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "soap": "^1.1.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,14 @@
+[package]
+name = "spike-sqlcipher"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# La pregunta del spike: compila `bundled-sqlcipher` en Windows sin OpenSSL
+# externo instalado? Es la advertencia W-02 de la arquitectura.
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
+
+[[bin]]
+name = "spike"
+path = "src/main.rs"
