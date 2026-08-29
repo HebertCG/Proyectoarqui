@@ -1,0 +1,35 @@
+# Normaliza finales de linea. Sin esto, un equipo con Windows, macOS y Linux
+# produce diffs fantasma donde el archivo entero aparece modificado, y cada
+# merge se vuelve un conflicto artificial.
+#
+# Regla: LF en el repositorio, lo que cada quien tenga en su disco.
+* text=auto eol=lf
+
+# Scripts que Windows debe ejecutar con CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binarios: git no debe tocarlos jamas.
+*.pdf   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.exe   binary
+*.dll   binary
+*.db    binary
+*.sqlite binary
+
+# Archivos generados: se muestran colapsados en los diffs de GitHub y no
+# cuentan como codigo del proyecto.
+pnpm-lock.yaml   linguist-generated=true -diff
+Cargo.lock       linguist-generated=true -diff
+*.sef.json       linguist-generated=true -diff
+
+# Los contratos son la fuente de verdad del proyecto: que GitHub los cuente.
+*.xsd  linguist-detectable=true
+*.wsdl linguist-detectable=true

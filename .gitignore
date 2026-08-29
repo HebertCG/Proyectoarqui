@@ -1,0 +1,49 @@
+# Dependencias
+node_modules/
+.pnpm-store/
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# Entorno — NUNCA versionar secretos (CLAUDE.md §9.3)
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.p12
+certificados/
+
+# Rust / Tauri
+target/
+terminal-pos/src-tauri/target/
+
+# Bases de datos locales
+*.sqlite
+*.sqlite3
+*.db
+
+# Cobertura y pruebas
+coverage/
+.vitest/
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Artefactos derivados de XSLT (la fuente de verdad es el .xsl)
+*.sef.json
+
+# Tipos generados desde los contratos OpenAPI.
+# Artefacto derivado: se regeneran con `pnpm install`. Versionarlos solo
+# produce conflictos de merge que se resuelven regenerando.
+packages/contracts/src/generado/

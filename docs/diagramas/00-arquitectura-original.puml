@@ -1,0 +1,153 @@
+@startuml Sales_Customer_Service_Architecture
+
+skinparam componentStyle rectangle
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam rectangle {
+  BorderColor #444444
+  FontSize 12
+}
+skinparam package {
+  BorderColor #666666
+  FontSize 13
+  FontStyle bold
+}
+skinparam arrow {
+  Color #444444
+  FontSize 11
+}
+
+title Sales & Customer Service — Arquitectura Local-First Multiplataforma
+
+' ============================
+' DESKTOP / TABLET (Local-First)
+' ============================
+package "Terminal Local (Desktop / Tablet)\nTauri 2.0" as LOCAL {
+
+  package "UI Layer (React + TS + Zustand)" as UI {
+    [Módulo POS / Venta]
+    [Módulo Caja]
+    [Módulo Cliente / CRM]
+    [Módulo Catálogo]
+  }
+
+  package "Contratos de Dominio (Clean Architecture)" as CONTRACTS {
+    interface "ITicketRepository" as ITICKET
+    interface "IClientRepository" as ICLIENT
+    interface "ICatalogRepository" as ICATALOG
+    [RepositoryFactory\n(detecta entorno en runtime)] as FACTORY
+  }
+
+  package "Core Nativo (Rust)" as CORE {
+    [Comandos IPC]
+    [Adaptador de Escaneo\n(ZXing / MLKit / VisionKit)]
+    [Adaptador de Impresión\n(ESC/POS)]
+    [Worker de Sincronización\n(backoff exponencial)]
+  }
+
+  database "SQLite + SQLCipher" as SQLITE {
+    [Tablas de Dominio\n(Venta, Caja, Cliente, Catálogo)]
+    [sync_outbox\n(UUIDv4, idempotente)]
+    [Ticket en progreso\n(autoguardado incremental)]
+  }
+
+  [Impresora Térmica] as PRINTER
+  [Cámara / Escáner USB] as SCANNER
+
+  UI --> CONTRACTS : usa interfaces\nabstractas (nunca DB/HTTP directo)
+  FACTORY --> ITICKET
+  FACTORY --> ICLIENT
+  FACTORY --> ICATALOG
+  FACTORY --> CORE : "resuelve a comandos IPC\n(si Desktop/Tablet ejecutable)"
+  CORE --> SQLITE : lectura / escritura\n(< 200ms)
+  CORE --> PRINTER : comandos ESC/POS
+  CORE --> SCANNER : captura código
+  [Worker de Sincronización] ..> SQLITE : lee eventos pendientes\n(sync_outbox)
+}
+
+' ============================
+' WEB (Backoffice / Administración)
+' ============================
+package "Backoffice Web (Navegador)\nReact estático" as WEB {
+  [Panel de Administración]
+  [Gestión de Catálogo Central]
+  [Dashboards y Reportes]
+}
+
+' ============================
+' CLOUD SERVICES
+' ============================
+package "Servicios Cloud (SOA)" as CLOUD {
+  [API REST\n(OpenAPI)] as API
+
+  database "MySQL / PostgreSQL" as CLOUDDB
+
+  [Sales & Customer\nSync Endpoint] as SYNC_EP
+  [E-Invoicing Service] as EINVOICE
+  [Payment Gateway Service] as PAYMENT
+  [Omnichannel Bot Service] as OMNI
+  [Analytics & Reporting Service] as ANALYTICS
+  [Inventory Service\n(alcance parcial)] as INVENTORY
+
+  API --> CLOUDDB
+  API --> SYNC_EP
+  SYNC_EP --> EINVOICE : cola de comprobantes\npendientes
+  SYNC_EP --> INVENTORY : descuento / reingreso\nde stock
+  API --> ANALYTICS : consolidación\nmulti-serie
+}
+
+[SUNAT] as SUNAT
+
+' ============================
+' CONEXIONES ENTRE CAPAS
+' ============================
+CORE -down-> API : "push: eventos de sync_outbox\n(venta, caja, cliente)\nHTTPS/REST — idempotente"
+API -up-> CORE : "pull: catálogo y precios\nactualizados desde backoffice"
+
+WEB -down-> API : CRUD directo\n(sin SQLite local)
+
+note right of FACTORY
+  RepositoryFactory:
+  - Ejecutable instalado → implementación
+    vía comandos IPC / Rust / SQLite
+  - Entorno Web → implementación
+    vía REST directo a la API
+  Mismo código de UI compartido
+  entre Desktop, Tablet y Web.
+end note
+
+EINVOICE -right-> SUNAT : firma digital +\nenvío tributario
+SUNAT -left-> EINVOICE : estado\n(aceptado / observado / rechazado)
+EINVOICE ..> SYNC_EP : actualización de estado\ndel comprobante
+SYNC_EP ..> CORE : estado tributario\nsincronizado al local
+
+PAYMENT -[hidden]-> OMNI
+
+note right of CORE
+  El Worker de Sincronización
+  detecta conectividad y
+  reintenta con backoff
+  exponencial ante fallos.
+  Toda operación es
+  idempotente (UUIDv4).
+end note
+
+note bottom of WEB
+  El Backoffice Web NO opera
+  Local-First: es cliente puro
+  de la API REST contra
+  MySQL/PostgreSQL en la nube.
+end note
+
+note bottom of INVENTORY
+  Alcance parcial: solo
+  descuento/reingreso de
+  stock y consulta de
+  disponibilidad. Transferencias
+  multialmacén y trazabilidad
+  avanzada quedan fuera del
+  flujo actual (ver W-05).
+end note
+
+@enduml
