@@ -1,0 +1,33 @@
+{
+  "name": "@pos/service-kit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Base común de todos los servicios: bootstrap, envelope, errores, idempotencia, auditoría y mensajería",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@fastify/type-provider-typebox": "^5.0.0",
+    "@sinclair/typebox": "^0.34.0",
+    "amqplib": "^0.10.4",
+    "fastify": "^5.2.0"
+  },
+  "devDependencies": {
+    "@types/amqplib": "^0.10.5",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

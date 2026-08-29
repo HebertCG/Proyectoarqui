@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- RUC con prefijo 99 (inválido para SUNAT) y solo 10 dígitos.
+     El XSD debe rechazarlo por el patrón (10|15|17|20)[0-9]{9}. -->
+<Comprobante xmlns="urn:pos:ventas:comprobante:v1">
+  <uuid>8a1b2c3d-4e5f-4a6b-9c8d-7e6f5a4b3c2d</uuid>
+  <tipoComprobante>FACTURA</tipoComprobante>
+  <serie>F001</serie>
+  <correlativo>129</correlativo>
+  <fechaEmision>2026-08-29</fechaEmision>
+  <cliente>
+    <tipoDocumento>RUC</tipoDocumento>
+    <numeroDocumento>9912345678</numeroDocumento>
+    <razonSocial>Empresa Falsa S.A.</razonSocial>
+  </cliente>
+  <lineas>
+    <linea>
+      <sku>SH-500ML</sku>
+      <descripcion>Shampoo anticaspa 500ml</descripcion>
+      <cantidad>1</cantidad>
+      <precioUnitario>25.00</precioUnitario>
+      <importe>25.00</importe>
+    </linea>
+  </lineas>
+  <totalGravado>21.19</totalGravado>
+  <totalIgv>3.81</totalIgv>
+  <total>25.00</total>
+  <estadoTributario>PENDIENTE_ENVIO</estadoTributario>
+</Comprobante>

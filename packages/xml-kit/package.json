@@ -1,0 +1,33 @@
+{
+  "name": "@pos/xml-kit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "XSD, XSLT, XPath y XQuery — las cuatro tecnologias XML del silabo, en un solo lugar",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "compilar-xslt": "node scripts/compilar-xslt.mjs",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fontoxpath": "^3.33.0",
+    "saxon-js": "^2.7.0",
+    "slimdom": "^4.3.0",
+    "xmllint-wasm": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "xslt3": "^2.7.0"
+  }
+}

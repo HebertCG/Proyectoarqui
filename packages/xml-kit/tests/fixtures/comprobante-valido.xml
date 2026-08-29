@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Comprobante xmlns="urn:pos:ventas:comprobante:v1">
+  <uuid>3f7c1e94-9b2a-4d51-a8e3-6c0f5d2b8a17</uuid>
+  <tipoComprobante>FACTURA</tipoComprobante>
+  <serie>F001</serie>
+  <correlativo>128</correlativo>
+  <fechaEmision>2026-08-29</fechaEmision>
+  <cliente>
+    <tipoDocumento>RUC</tipoDocumento>
+    <numeroDocumento>20512345678</numeroDocumento>
+    <razonSocial>Distribuidora San Miguel S.A.C.</razonSocial>
+  </cliente>
+  <lineas>
+    <linea>
+      <sku>SH-500ML</sku>
+      <descripcion>Shampoo anticaspa 500ml</descripcion>
+      <cantidad>3</cantidad>
+      <precioUnitario>25.00</precioUnitario>
+      <importe>75.00</importe>
+    </linea>
+    <linea>
+      <sku>SRV-CORTE</sku>
+      <descripcion>Corte de cabello - Especialista</descripcion>
+      <cantidad>1</cantidad>
+      <precioUnitario>45.00</precioUnitario>
+      <importe>45.00</importe>
+    </linea>
+  </lineas>
+  <totalGravado>101.69</totalGravado>
+  <totalIgv>18.31</totalIgv>
+  <total>120.00</total>
+  <estadoTributario>ACEPTADO</estadoTributario>
+  <respuestaSunat>
+    <codigo>0</codigo>
+    <descripcion>La Factura numero F001-128 ha sido aceptada</descripcion>
+    <recibidoEn>2026-08-29T14:32:11Z</recibidoEn>
+  </respuestaSunat>
+</Comprobante>
