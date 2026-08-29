@@ -1,0 +1,183 @@
+# Componentes compartidos por todos los contratos REST del inventario.
+# Se referencian con $ref relativo: '_comunes-v1.yaml#/components/schemas/X'
+#
+# Un solo envelope en todo el inventario permite que el ESB y cualquier
+# consumidor traten las respuestas de forma uniforme (CLAUDE.md §2.1 P3).
+
+openapi: 3.1.0
+info:
+  title: Componentes comunes
+  version: 1.0.0
+  description: No es un servicio. Solo define esquemas y respuestas reutilizables.
+
+paths: {}
+
+components:
+  # ── Parámetros transversales ────────────────────────────────────────
+  parameters:
+    CorrelationId:
+      name: x-correlation-id
+      in: header
+      required: false
+      description: >
+        Identificador que sigue la operación a través de todos los servicios.
+        Si no se envía, el servicio genera uno y lo devuelve en la respuesta.
+      schema:
+        type: string
+        maxLength: 64
+
+    IdempotencyKey:
+      name: idempotency-key
+      in: header
+      required: false
+      description: >
+        UUIDv4. Reenviar la misma clave no vuelve a ejecutar la operación:
+        devuelve la respuesta original (RF-SYNC-07, RNF-09).
+      schema:
+        $ref: '#/components/schemas/Uuid'
+
+    Pagina:
+      name: pagina
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+
+    Limite:
+      name: limite
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+
+  # ── Tipos base ──────────────────────────────────────────────────────
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+      pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+      examples: ['3f7c1e94-9b2a-4d51-a8e3-6c0f5d2b8a17']
+
+    Monto:
+      type: number
+      minimum: 0
+      multipleOf: 0.01
+      examples: [120.00]
+
+    MontoConSigno:
+      type: number
+      multipleOf: 0.01
+
+    TipoDocumento:
+      type: string
+      enum: [DNI, RUC, GENERICO]
+
+    TipoComprobante:
+      type: string
+      enum: [BOLETA, FACTURA, NOTA_VENTA, NOTA_CREDITO]
+
+    EstadoTributario:
+      type: string
+      enum: [PENDIENTE_ENVIO, ENVIADO, ACEPTADO, OBSERVADO, RECHAZADO, ANULADO, NO_APLICA]
+
+    Rol:
+      type: string
+      enum: [CAJERO, SUPERVISOR, ADMINISTRADOR]
+
+    FormaPago:
+      type: string
+      enum: [EFECTIVO, TARJETA_DEBITO, TARJETA_CREDITO, YAPE, PLIN, TRANSFERENCIA, PUNTOS]
+
+    Sku:
+      type: string
+      pattern: '^[A-Z0-9][A-Z0-9\-_]{1,31}$'
+      examples: ['SH-500ML']
+
+    Serie:
+      type: string
+      pattern: '^[BFN][A-Z0-9]{3}$'
+      examples: ['F001']
+
+    Trazabilidad:
+      type: object
+      required: [creadoPor, creadoEn]
+      properties:
+        creadoPor: { type: string }
+        creadoEn: { type: string, format: date-time }
+        modificadoPor: { type: string }
+        modificadoEn: { type: string, format: date-time }
+
+    # ── Envelope ──────────────────────────────────────────────────────
+    Meta:
+      type: object
+      required: [correlationId, servicio, timestamp]
+      properties:
+        correlationId: { type: string }
+        servicio: { type: string }
+        timestamp: { type: string, format: date-time }
+        total: { type: integer }
+        pagina: { type: integer }
+        limite: { type: integer }
+
+    Error:
+      type: object
+      required: [codigo, mensaje]
+      properties:
+        codigo:
+          type: string
+          description: Código estable y legible del dominio, no un número mágico.
+          examples: ['CLIENTE_NO_ENCONTRADO']
+        mensaje: { type: string }
+        detalles: {}
+
+    RespuestaError:
+      type: object
+      required: [exito, datos, error, meta]
+      properties:
+        exito: { type: boolean, const: false }
+        datos: { type: 'null' }
+        error: { $ref: '#/components/schemas/Error' }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+  # ── Respuestas de error reutilizables ───────────────────────────────
+  responses:
+    SolicitudInvalida:
+      description: La petición no cumple el contrato del servicio.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/RespuestaError' }
+
+    NoAutorizado:
+      description: Falta autenticación o el token es inválido.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/RespuestaError' }
+
+    Prohibido:
+      description: El rol no permite esta operación (RNF-06).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/RespuestaError' }
+
+    NoEncontrado:
+      description: El recurso no existe.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/RespuestaError' }
+
+    Conflicto:
+      description: El estado actual del recurso no permite la operación.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/RespuestaError' }
+
+    ReglaNegocio:
+      description: La operación viola una regla de negocio.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/RespuestaError' }
+
+  securitySchemes:
+    TokenServicio:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token emitido por Seguridad.Utility (ADR-001).

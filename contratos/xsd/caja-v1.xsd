@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Turno de caja y sus movimientos. Entidad de `Caja.Service`.
+  Cubre RF-CAJA-01..10.
+
+  RF-CAJA-02: sin turno abierto no se puede registrar una venta.
+  RNF-08: los movimientos son append-only, nunca se editan ni borran.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="urn:pos:caja:turno:v1"
+           xmlns:c="urn:pos:comun:v1"
+           targetNamespace="urn:pos:caja:turno:v1"
+           elementFormDefault="qualified">
+
+  <xs:import namespace="urn:pos:comun:v1" schemaLocation="tipos-comunes-v1.xsd"/>
+
+  <xs:simpleType name="EstadoTurno">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="ABIERTO"/>
+      <xs:enumeration value="CERRADO"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="TipoMovimiento">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="FONDO_INICIAL"/>
+      <xs:enumeration value="VENTA"/>
+      <xs:enumeration value="DEVOLUCION"/>
+      <xs:enumeration value="INGRESO"/>
+      <xs:enumeration value="EGRESO"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- RF-CAJA-05: el arqueo ciego no muestra el esperado antes de contar. -->
+  <xs:simpleType name="ModoArqueo">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="CIEGO"/>
+      <xs:enumeration value="ASISTIDO"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- RF-CAJA-03: motivo obligatorio en ingresos y egresos. -->
+  <xs:complexType name="Movimiento">
+    <xs:sequence>
+      <xs:element name="uuid" type="c:Uuid"/>
+      <xs:element name="tipo" type="TipoMovimiento"/>
+      <xs:element name="formaPago" type="c:FormaPago"/>
+      <xs:element name="monto" type="c:MontoConSigno"/>
+      <xs:element name="motivo" type="c:TextoLargo" minOccurs="0"/>
+      <!-- Referencia a la venta que lo origino, si aplica. -->
+      <xs:element name="ventaUuid" type="c:Uuid" minOccurs="0"/>
+      <xs:element name="registradoPor" type="c:TextoCorto"/>
+      <xs:element name="registradoEn" type="xs:dateTime"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- RF-CAJA-06: desglose por forma de pago al cierre. -->
+  <xs:complexType name="DesglosePago">
+    <xs:sequence>
+      <xs:element name="formaPago" type="c:FormaPago"/>
+      <xs:element name="total" type="c:Monto"/>
+      <xs:element name="operaciones" type="xs:nonNegativeInteger"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- RF-CAJA-04: esperado vs contado, y la diferencia. -->
+  <xs:complexType name="Arqueo">
+    <xs:sequence>
+      <xs:element name="modo" type="ModoArqueo"/>
+      <xs:element name="montoEsperado" type="c:Monto"/>
+      <xs:element name="montoContado" type="c:Monto"/>
+      <xs:element name="diferencia" type="c:MontoConSigno"/>
+      <xs:element name="observacion" type="c:TextoLargo" minOccurs="0"/>
+      <xs:element name="desglose" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="pago" type="DesglosePago" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="TurnoCaja">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="uuid" type="c:Uuid"/>
+        <!-- Punto de emision. Determina la serie de comprobantes. -->
+        <xs:element name="cajaId" type="c:TextoCorto"/>
+        <xs:element name="estado" type="EstadoTurno"/>
+        <xs:element name="fondoInicial" type="c:Monto"/>
+        <xs:element name="abiertoPor" type="c:TextoCorto"/>
+        <xs:element name="abiertoEn" type="xs:dateTime"/>
+        <xs:element name="cerradoPor" type="c:TextoCorto" minOccurs="0"/>
+        <xs:element name="cerradoEn" type="xs:dateTime" minOccurs="0"/>
+        <xs:element name="movimientos" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="movimiento" type="Movimiento" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <!-- Presente solo cuando el turno esta CERRADO. -->
+        <xs:element name="arqueo" type="Arqueo" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

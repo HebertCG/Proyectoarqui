@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Tipos canonicos del dominio. Todos los demas esquemas importan de aqui.
+
+  Un solo vocabulario para todo el inventario: si "monto" significa algo
+  distinto en Caja y en Venta, la composicion falla. CLAUDE.md §2.1 P1.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="urn:pos:comun:v1"
+           targetNamespace="urn:pos:comun:v1"
+           elementFormDefault="qualified">
+
+  <!-- ── Identificadores ───────────────────────────────────────────── -->
+
+  <!-- UUIDv4. Base de la idempotencia (RF-SYNC-07, RNF-09). -->
+  <xs:simpleType name="Uuid">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="CorrelationId">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="64"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ── Identificacion tributaria (RF-CRM-01, RF-CRM-02) ──────────── -->
+
+  <xs:simpleType name="TipoDocumento">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="DNI"/>
+      <xs:enumeration value="RUC"/>
+      <xs:enumeration value="GENERICO"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- DNI: exactamente 8 digitos. -->
+  <xs:simpleType name="NumeroDNI">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9]{8}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- RUC: 11 digitos con prefijo valido SUNAT.
+       10=persona natural con negocio, 15/17=casos especiales, 20=persona juridica. -->
+  <xs:simpleType name="NumeroRUC">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="(10|15|17|20)[0-9]{9}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="NumeroDocumento">
+    <xs:union memberTypes="NumeroDNI NumeroRUC"/>
+  </xs:simpleType>
+
+  <!-- ── Comprobantes ──────────────────────────────────────────────── -->
+
+  <!-- NOTA_CREDITO existe por ADR-002: es la unica reversion legal de un
+       comprobante ya aceptado por SUNAT. -->
+  <xs:simpleType name="TipoComprobante">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="BOLETA"/>
+      <xs:enumeration value="FACTURA"/>
+      <xs:enumeration value="NOTA_VENTA"/>
+      <xs:enumeration value="NOTA_CREDITO"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Maquina de estados de ADR-002. El estado decide que reversion es legal. -->
+  <xs:simpleType name="EstadoTributario">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="PENDIENTE_ENVIO"/>
+      <xs:enumeration value="ENVIADO"/>
+      <xs:enumeration value="ACEPTADO"/>
+      <xs:enumeration value="OBSERVADO"/>
+      <xs:enumeration value="RECHAZADO"/>
+      <xs:enumeration value="ANULADO"/>
+      <xs:enumeration value="NO_APLICA"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Serie por caja: B001 boleta, F001 factura, NV01 nota de venta, NC01 nota de credito. -->
+  <xs:simpleType name="Serie">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[BFN][A-Z0-9]{3}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ── Valores monetarios ────────────────────────────────────────── -->
+
+  <xs:simpleType name="Monto">
+    <xs:restriction base="xs:decimal">
+      <xs:minInclusive value="0"/>
+      <xs:fractionDigits value="2"/>
+      <xs:totalDigits value="12"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Admite negativos: usado en movimientos de caja y ajustes. -->
+  <xs:simpleType name="MontoConSigno">
+    <xs:restriction base="xs:decimal">
+      <xs:fractionDigits value="2"/>
+      <xs:totalDigits value="12"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Moneda">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="PEN"/>
+      <xs:enumeration value="USD"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Porcentaje">
+    <xs:restriction base="xs:decimal">
+      <xs:minInclusive value="0"/>
+      <xs:maxInclusive value="100"/>
+      <xs:fractionDigits value="4"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ── Seguridad (ADR-001) ───────────────────────────────────────── -->
+
+  <xs:simpleType name="Rol">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="CAJERO"/>
+      <xs:enumeration value="SUPERVISOR"/>
+      <xs:enumeration value="ADMINISTRADOR"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ── Formas de pago (RF-POS-06) ────────────────────────────────── -->
+
+  <xs:simpleType name="FormaPago">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="EFECTIVO"/>
+      <xs:enumeration value="TARJETA_DEBITO"/>
+      <xs:enumeration value="TARJETA_CREDITO"/>
+      <xs:enumeration value="YAPE"/>
+      <xs:enumeration value="PLIN"/>
+      <xs:enumeration value="TRANSFERENCIA"/>
+      <xs:enumeration value="PUNTOS"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ── Texto acotado ─────────────────────────────────────────────── -->
+
+  <xs:simpleType name="TextoCorto">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="120"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="TextoLargo">
+    <xs:restriction base="xs:string">
+      <xs:maxLength value="1000"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Sku">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Z0-9][A-Z0-9\-_]{1,31}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ── Auditoria (RNF-11) ────────────────────────────────────────── -->
+
+  <!-- Todo cambio lleva quien y cuando. Va incrustado en las entidades,
+       no como tabla aparte, para que sea imposible omitirlo. -->
+  <xs:complexType name="Trazabilidad">
+    <xs:sequence>
+      <xs:element name="creadoPor" type="TextoCorto"/>
+      <xs:element name="creadoEn" type="xs:dateTime"/>
+      <xs:element name="modificadoPor" type="TextoCorto" minOccurs="0"/>
+      <xs:element name="modificadoEn" type="xs:dateTime" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+</xs:schema>

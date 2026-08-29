@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Producto y Servicio. Entidad de `Catalogo.Service`.
+  Cubre RF-CAT-01..08 y RF-SERV-01..03.
+
+  La distincion central del dominio: un PRODUCTO depende de stock; un
+  SERVICIO depende de disponibilidad de tiempo, personal y recurso fisico.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="urn:pos:catalogo:producto:v1"
+           xmlns:c="urn:pos:comun:v1"
+           targetNamespace="urn:pos:catalogo:producto:v1"
+           elementFormDefault="qualified">
+
+  <xs:import namespace="urn:pos:comun:v1" schemaLocation="tipos-comunes-v1.xsd"/>
+
+  <xs:simpleType name="TipoItem">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="PRODUCTO"/>
+      <xs:enumeration value="SERVICIO"/>
+      <xs:enumeration value="COMBO"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Variante: talla, color, sabor (RF-CAT-01). -->
+  <xs:complexType name="Variante">
+    <xs:sequence>
+      <xs:element name="sku" type="c:Sku"/>
+      <xs:element name="atributo" type="c:TextoCorto"/>
+      <xs:element name="valor" type="c:TextoCorto"/>
+      <xs:element name="precioDiferencial" type="c:MontoConSigno" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Precio por lista (RF-CAT-03). -->
+  <xs:complexType name="PrecioLista">
+    <xs:sequence>
+      <xs:element name="lista" type="c:TextoCorto"/>
+      <xs:element name="precio" type="c:Monto"/>
+      <xs:element name="vigenteDesde" type="xs:date"/>
+      <xs:element name="vigenteHasta" type="xs:date" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Miembro de un COMBO (RF-CAT-02). -->
+  <xs:complexType name="ComponenteCombo">
+    <xs:sequence>
+      <xs:element name="sku" type="c:Sku"/>
+      <xs:element name="cantidad" type="xs:positiveInteger"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Solo para tipoItem = SERVICIO (RF-SERV-01..03). -->
+  <xs:complexType name="DatosServicio">
+    <xs:sequence>
+      <xs:element name="duracionMinutos" type="xs:positiveInteger"/>
+      <!-- Especialistas habilitados. Su agenda la gestiona Agenda.Service. -->
+      <xs:element name="especialistas" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="especialistaId" type="c:Uuid" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <!-- Recursos fisicos limitados: sala, silla, equipo. -->
+      <xs:element name="recursos" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="recursoId" type="c:Uuid" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <!-- Insumos que consume la atencion (RF-SERV-08). -->
+      <xs:element name="insumos" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="insumo" type="ComponenteCombo" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="Producto">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="uuid" type="c:Uuid"/>
+        <xs:element name="sku" type="c:Sku"/>
+        <xs:element name="tipoItem" type="TipoItem"/>
+        <xs:element name="nombre" type="c:TextoCorto"/>
+        <xs:element name="descripcion" type="c:TextoLargo" minOccurs="0"/>
+        <xs:element name="categoria" type="c:TextoCorto"/>
+        <xs:element name="precioBase" type="c:Monto"/>
+        <xs:element name="afectoIgv" type="xs:boolean" default="true"/>
+
+        <xs:element name="variantes" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="variante" type="Variante" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+
+        <xs:element name="precios" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="precioLista" type="PrecioLista" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+
+        <xs:element name="componentes" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="componente" type="ComponenteCombo" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+
+        <xs:element name="datosServicio" type="DatosServicio" minOccurs="0"/>
+
+        <!-- RF-CAT-07: se desactiva, no se elimina. -->
+        <xs:element name="activo" type="xs:boolean" default="true"/>
+        <xs:element name="trazabilidad" type="c:Trazabilidad"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

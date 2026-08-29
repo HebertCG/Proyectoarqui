@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Ticket de venta. Entidad de `Venta.Service`.
+  Cubre RF-POS-01..19.
+
+  El desglose de precios de cada linea sigue la cascada de ADR-003:
+  lista -> promocion -> cupon -> descuento manual.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="urn:pos:ventas:ticket:v1"
+           xmlns:c="urn:pos:comun:v1"
+           targetNamespace="urn:pos:ventas:ticket:v1"
+           elementFormDefault="qualified">
+
+  <xs:import namespace="urn:pos:comun:v1" schemaLocation="tipos-comunes-v1.xsd"/>
+
+  <!-- RF-POS-08: un ticket suspendido se retoma despues.
+       RF-POS-09: EN_CURSO se persiste incrementalmente para recuperar
+       tras un cierre inesperado (RNF-10). -->
+  <xs:simpleType name="EstadoTicket">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="EN_CURSO"/>
+      <xs:enumeration value="SUSPENDIDO"/>
+      <xs:enumeration value="CERRADO"/>
+      <xs:enumeration value="ANULADO"/>
+      <xs:enumeration value="DEVUELTO_PARCIAL"/>
+      <xs:enumeration value="DEVUELTO_TOTAL"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Etapas de la cascada de ADR-003. El orden es parte del contrato. -->
+  <xs:simpleType name="OrigenDescuento">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="LISTA_PRECIOS"/>
+      <xs:enumeration value="PROMOCION"/>
+      <xs:enumeration value="CUPON"/>
+      <xs:enumeration value="MANUAL"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!--
+    Un paso de la cascada de precios. Se guarda el desglose completo, no solo
+    el total, para poder auditar y explicarle al cliente como se llego al precio.
+  -->
+  <xs:complexType name="PasoDescuento">
+    <xs:sequence>
+      <xs:element name="orden" type="xs:positiveInteger"/>
+      <xs:element name="origen" type="OrigenDescuento"/>
+      <xs:element name="referencia" type="c:TextoCorto" minOccurs="0"/>
+      <xs:element name="montoAntes" type="c:Monto"/>
+      <xs:element name="descuento" type="c:Monto"/>
+      <xs:element name="montoDespues" type="c:Monto"/>
+      <!-- Si es false, la cascada se detiene aqui (ADR-003). -->
+      <xs:element name="acumulable" type="xs:boolean" default="true"/>
+      <!-- MANUAL exige PIN de supervisor (ADR-001, RNF-06). -->
+      <xs:element name="autorizadoPor" type="c:TextoCorto" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="LineaTicket">
+    <xs:sequence>
+      <xs:element name="uuid" type="c:Uuid"/>
+      <xs:element name="sku" type="c:Sku"/>
+      <xs:element name="descripcion" type="c:TextoCorto"/>
+      <xs:element name="cantidad" type="xs:positiveInteger"/>
+      <xs:element name="precioLista" type="c:Monto"/>
+      <xs:element name="descuentos" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="paso" type="PasoDescuento" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="precioFinal" type="c:Monto"/>
+      <xs:element name="importe" type="c:Monto"/>
+      <!-- Presente si la linea es un SERVICIO agendado (RF-SERV-04). -->
+      <xs:element name="reservaUuid" type="c:Uuid" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- RF-POS-06: varias formas de pago en un mismo ticket. -->
+  <xs:complexType name="Pago">
+    <xs:sequence>
+      <xs:element name="formaPago" type="c:FormaPago"/>
+      <xs:element name="monto" type="c:Monto"/>
+      <!-- RF-POS-07: solo en efectivo. -->
+      <xs:element name="montoRecibido" type="c:Monto" minOccurs="0"/>
+      <xs:element name="vuelto" type="c:Monto" minOccurs="0"/>
+      <xs:element name="referencia" type="c:TextoCorto" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- RF-POS-10 y RF-POS-11: anulacion y devolucion con motivo y autorizante. -->
+  <xs:complexType name="Reversion">
+    <xs:sequence>
+      <xs:element name="uuid" type="c:Uuid"/>
+      <xs:element name="motivo" type="c:TextoLargo"/>
+      <xs:element name="autorizadoPor" type="c:TextoCorto"/>
+      <xs:element name="registradoEn" type="xs:dateTime"/>
+      <!-- Lineas devueltas. Vacio = devolucion total. -->
+      <xs:element name="lineasDevueltas" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="lineaUuid" type="c:Uuid" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <!-- Nota de credito emitida, si el comprobante ya estaba ACEPTADO (ADR-002). -->
+      <xs:element name="notaCreditoUuid" type="c:Uuid" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="Ticket">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="uuid" type="c:Uuid"/>
+        <xs:element name="estado" type="EstadoTicket"/>
+        <!-- RF-CAJA-02: sin turno abierto no hay venta. -->
+        <xs:element name="turnoCajaUuid" type="c:Uuid"/>
+        <!-- RF-POS-05: la venta sin cliente es valida. -->
+        <xs:element name="clienteUuid" type="c:Uuid" minOccurs="0"/>
+        <!-- Determinado por el validador de documento (RF-POS-17, RF-POS-18). -->
+        <xs:element name="tipoComprobante" type="c:TipoComprobante"/>
+        <xs:element name="comprobanteUuid" type="c:Uuid" minOccurs="0"/>
+
+        <xs:element name="lineas">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="linea" type="LineaTicket" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+
+        <xs:element name="pagos" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="pago" type="Pago" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+
+        <xs:element name="subtotal" type="c:Monto"/>
+        <xs:element name="descuentoTotal" type="c:Monto"/>
+        <xs:element name="igv" type="c:Monto"/>
+        <xs:element name="total" type="c:Monto"/>
+
+        <xs:element name="reversion" type="Reversion" minOccurs="0"/>
+        <xs:element name="trazabilidad" type="c:Trazabilidad"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

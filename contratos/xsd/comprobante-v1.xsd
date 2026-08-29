@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Comprobante de pago. Es el documento que se envia a SUNAT.
+
+  Incorpora la maquina de estados de ADR-002: `estadoTributario` decide que
+  reversion es legal. Un comprobante ACEPTADO no se anula, se le emite una
+  nota de credito.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="urn:pos:ventas:comprobante:v1"
+           xmlns:c="urn:pos:comun:v1"
+           targetNamespace="urn:pos:ventas:comprobante:v1"
+           elementFormDefault="qualified">
+
+  <xs:import namespace="urn:pos:comun:v1" schemaLocation="tipos-comunes-v1.xsd"/>
+
+  <xs:complexType name="Cliente">
+    <xs:sequence>
+      <xs:element name="tipoDocumento" type="c:TipoDocumento"/>
+      <!-- Ausente cuando tipoDocumento es GENERICO (RF-CRM-01). -->
+      <xs:element name="numeroDocumento" type="c:NumeroDocumento" minOccurs="0"/>
+      <xs:element name="razonSocial" type="c:TextoCorto"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="Linea">
+    <xs:sequence>
+      <xs:element name="sku" type="c:Sku"/>
+      <xs:element name="descripcion" type="c:TextoCorto"/>
+      <xs:element name="cantidad" type="xs:positiveInteger"/>
+      <xs:element name="precioUnitario" type="c:Monto"/>
+      <xs:element name="importe" type="c:Monto"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Presente solo en NOTA_CREDITO. Referencia al documento que revierte. -->
+  <xs:complexType name="DocumentoReferencia">
+    <xs:sequence>
+      <xs:element name="tipoComprobante" type="c:TipoComprobante"/>
+      <xs:element name="serie" type="c:Serie"/>
+      <xs:element name="correlativo" type="xs:positiveInteger"/>
+      <!-- Codigo del catalogo 09 de SUNAT: 01=anulacion de la operacion,
+           02=anulacion por error en el RUC, 06=devolucion total, 07=devolucion por item. -->
+      <xs:element name="motivoCodigo" type="c:TextoCorto"/>
+      <xs:element name="motivoDescripcion" type="c:TextoLargo"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Respuesta de SUNAT (CDR). Ausente mientras no haya sido enviado. -->
+  <xs:complexType name="RespuestaSunat">
+    <xs:sequence>
+      <xs:element name="codigo" type="c:TextoCorto"/>
+      <xs:element name="descripcion" type="c:TextoLargo"/>
+      <xs:element name="recibidoEn" type="xs:dateTime"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="Comprobante">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="uuid" type="c:Uuid"/>
+        <xs:element name="tipoComprobante" type="c:TipoComprobante"/>
+        <xs:element name="serie" type="c:Serie"/>
+        <xs:element name="correlativo" type="xs:positiveInteger"/>
+        <xs:element name="fechaEmision" type="xs:date"/>
+        <xs:element name="moneda" type="c:Moneda" default="PEN" minOccurs="0"/>
+        <xs:element name="cliente" type="Cliente"/>
+        <xs:element name="lineas">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="linea" type="Linea" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="totalGravado" type="c:Monto"/>
+        <xs:element name="totalIgv" type="c:Monto"/>
+        <xs:element name="total" type="c:Monto"/>
+
+        <!-- Estado en el ciclo tributario (ADR-002). -->
+        <xs:element name="estadoTributario" type="c:EstadoTributario"/>
+        <xs:element name="documentoReferencia" type="DocumentoReferencia" minOccurs="0"/>
+        <xs:element name="respuestaSunat" type="RespuestaSunat" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>
