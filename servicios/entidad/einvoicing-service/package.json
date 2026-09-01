@@ -1,0 +1,30 @@
+{
+  "name": "@pos/einvoicing-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "E-Invoicing Service — UBL 2.1, firma XMLDSig y envio SOAP a SUNAT",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@pos/service-kit": "workspace:*",
+    "@pos/xml-kit": "workspace:*",
+    "@sinclair/typebox": "^0.34.0",
+    "fastify": "^5.2.0",
+    "soap": "^1.1.0",
+    "xml-crypto": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
