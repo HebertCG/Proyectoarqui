@@ -1,0 +1,30 @@
+{
+  "name": "@pos/auditoria",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Auditoria.Utility — registro append-only de toda operacion del inventario",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@pos/service-kit": "workspace:*",
+    "@sinclair/typebox": "^0.34.0",
+    "drizzle-orm": "^0.38.0",
+    "fastify": "^5.2.0",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "drizzle-kit": "^0.30.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
