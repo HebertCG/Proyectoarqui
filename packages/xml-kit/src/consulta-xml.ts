@@ -10,7 +10,13 @@
  *
  * Ambos los resuelve `fontoxpath`, que implementa las dos especificaciones.
  */
-import {
+// fontoxpath es CommonJS y no declara `exports` ni `type: module`. Node ESM no
+// detecta sus exports nombrados —aunque Vitest sí los resuelva—, así que el
+// servicio compilaba y fallaba al arrancar. Import por defecto funciona en ambos.
+import fontoxpath from 'fontoxpath';
+import { parseXmlDocument } from 'slimdom';
+
+const {
   evaluateXPath,
   evaluateXPathToString,
   evaluateXPathToStrings,
@@ -18,8 +24,7 @@ import {
   evaluateXPathToBoolean,
   evaluateXPathToFirstNode,
   evaluateXPathToNodes,
-} from 'fontoxpath';
-import { parseXmlDocument } from 'slimdom';
+} = fontoxpath;
 
 export type DocumentoXml = ReturnType<typeof parseXmlDocument>;
 

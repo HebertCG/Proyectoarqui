@@ -68,7 +68,7 @@ export function urlPostgres(baseDatos: string, env = process.env): string {
   const usuario = env['POSTGRES_USER'] ?? 'pos';
   const clave = env['POSTGRES_PASSWORD'] ?? 'pos_dev_local';
   const host = env['POSTGRES_HOST'] ?? 'localhost';
-  const puerto = env['POSTGRES_PORT'] ?? '5432';
+  const puerto = env['POSTGRES_PORT'] ?? '5433';
   return `postgres://${usuario}:${clave}@${host}:${puerto}/${baseDatos}`;
 }
 

@@ -214,3 +214,57 @@ entrante, devuelve envelope en 200 y en 404, y registra auditoría.
 **Criterio de "terminado" de la Fase 0 — cumplido:** `node tools/crear-servicio.mjs <nombre> <tipo> <puerto>`
 genera un servicio que arranca, responde `/health`, valida contra su esquema, devuelve el envelope estándar
 y deja entrada de auditoría. Y `docker compose up` levanta toda la infraestructura.
+
+
+---
+
+## S-05 — Puerto 5432 ocupado por PostgreSQL nativo
+
+**Hallazgo del entorno**, detectado al conectar el primer servicio a la base real.
+
+La máquina tenía el servicio de Windows `postgresql-x64-17` corriendo y escuchando en el
+5432. El contenedor también estaba mapeado ahí, pero **el nativo gana**: `psql` dentro del
+contenedor funcionaba (socket Unix) y desde el host fallaba con `28P01 auth_failed`, porque
+estaba conectando a otro PostgreSQL con otras credenciales.
+
+**Resolución:** el contenedor pasa al **5433**. No se toca la instalación del desarrollador.
+
+### El error de fondo: Docker Compose no leía el `.env`
+
+Al mover el puerto, el contenedor seguía en 5432. La causa es que **Docker Compose busca el
+`.env` junto al `docker-compose.yml`**, no en la raíz del proyecto. Como el compose vive en
+`infra/`, las variables del `.env` raíz se ignoraban en silencio y siempre se usaban los
+valores por defecto.
+
+Se corrigió pasando `--env-file .env` explícitamente en los scripts `infra:*`.
+
+Este fallo era invisible: todo "funcionaba" con los valores por defecto hasta que uno de
+ellos necesitó cambiar.
+
+---
+
+## S-06 — `fontoxpath` no carga en Node ESM crudo
+
+**Segundo caso del mismo patrón que S-04: las pruebas pasaban y el servicio no arrancaba.**
+
+Al levantar el ESB por primera vez:
+
+```
+SyntaxError: The requested module 'fontoxpath' does not provide an export
+named 'evaluateXPath'
+```
+
+`fontoxpath` es CommonJS y no declara `exports` ni `type: module` en su `package.json`. Node
+ESM intenta detectar sus exports nombrados y falla. **Vitest sí los resuelve** porque
+transforma los módulos, así que las 21 pruebas de `xml-kit` pasaban con normalidad.
+
+**Resolución:** import por defecto y desestructuración, que funciona en ambos entornos:
+
+```ts
+import fontoxpath from 'fontoxpath';
+const { evaluateXPath, evaluateXPathToString, ... } = fontoxpath;
+```
+
+**Lección repetida:** una suite verde no prueba que el servicio arranque. Por eso el
+esqueleto vertical levanta procesos reales en lugar de simular el transporte — es lo que
+destapó este fallo y el de S-04.
