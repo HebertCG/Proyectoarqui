@@ -27,7 +27,7 @@ let xmlInvalido: string;
 
 beforeAll(async () => {
   const [xsd, comunes, sef, valido, invalido] = await Promise.all([
-    readFile(join(contratos, 'xsd', 'comprobante-v1.xsd'), 'utf-8'),
+    readFile(join(contratos, 'xsd', 'einvoicing-v1.xsd'), 'utf-8'),
     readFile(join(contratos, 'xsd', 'tipos-comunes-v1.xsd'), 'utf-8'),
     readFile(join(contratos, 'xslt', 'comprobante-a-ubl-v1.sef.json'), 'utf-8'),
     readFile(join(fixtures, 'comprobante-valido.xml'), 'utf-8'),
@@ -37,7 +37,7 @@ beforeAll(async () => {
   // El esquema del comprobante importa los tipos canonicos: hay que
   // suministrarlos con el nombre exacto del schemaLocation.
   validador = new ValidadorXsd(xsd, {
-    nombre: 'comprobante-v1',
+    nombre: 'einvoicing-v1',
     importados: [{ nombre: 'tipos-comunes-v1.xsd', contenido: comunes }],
   });
   transformador = new TransformadorXslt(sef, 'comprobante-a-ubl-v1');
@@ -70,7 +70,7 @@ describe('ValidadorXsd (P1 — contrato estandarizado)', () => {
     // Sin suministrar el esquema importado, el XSD no compila. Eso es un
     // error del contrato y debe reportarse como tal, no como "documento invalido".
     const sinImportados = new ValidadorXsd(
-      await readFile(join(contratos, 'xsd', 'comprobante-v1.xsd'), 'utf-8'),
+      await readFile(join(contratos, 'xsd', 'einvoicing-v1.xsd'), 'utf-8'),
       { nombre: 'comprobante-v1' },
     );
     await expect(sinImportados.validar(xmlValido)).rejects.toThrow(

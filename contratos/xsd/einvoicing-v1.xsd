@@ -1,15 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Comprobante de pago. Es el documento que se envia a SUNAT.
+  E-Invoicing Service — esquema canonico del servicio.
+
+  El Comprobante es el documento que cruza la frontera entre
+  `Sales & Customer Service` (que lo emite localmente) y `E-Invoicing Service`
+  (que lo firma y lo envia a SUNAT). Por eso vive en el namespace de
+  E-Invoicing: es SU contrato, no un tipo interno de la venta.
 
   Incorpora la maquina de estados de ADR-002: `estadoTributario` decide que
   reversion es legal. Un comprobante ACEPTADO no se anula, se le emite una
   nota de credito.
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns="urn:pos:ventas:comprobante:v1"
+           xmlns="urn:pos:einvoicing:v1"
            xmlns:c="urn:pos:comun:v1"
-           targetNamespace="urn:pos:ventas:comprobante:v1"
+           targetNamespace="urn:pos:einvoicing:v1"
            elementFormDefault="qualified">
 
   <xs:import namespace="urn:pos:comun:v1" schemaLocation="tipos-comunes-v1.xsd"/>

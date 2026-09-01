@@ -35,6 +35,28 @@ if (!/^[a-z][a-z0-9-]*$/.test(nombre)) {
   process.exit(1);
 }
 
+// Sub-dominios internos de Sales & Customer Service. Fragmentarlos fue el error
+// corregido en docs/00-base/correccion-arquitectonica.md.
+const SUBDOMINIOS_PROHIBIDOS = new Set([
+  'caja', 'venta', 'ventas', 'cliente', 'clientes', 'crm', 'catalogo',
+  'validacion-documento', 'reglas-precio', 'seguridad',
+]);
+
+if (SUBDOMINIOS_PROHIBIDOS.has(nombre)) {
+  console.error(
+    [
+      `"${nombre}" NO es un servicio del inventario.`,
+      '',
+      'Es un sub-dominio interno de `Sales & Customer Service`, que es un',
+      'servicio compuesto por diseno cerrado (CLAUDE.md 3 y 4.2).',
+      'Fragmentarlo esta explicitamente prohibido en 12.',
+      '',
+      'Ver docs/00-base/correccion-arquitectonica.md',
+    ].join(String.fromCharCode(10)),
+  );
+  process.exit(1);
+}
+
 const puerto = Number(puertoArg ?? 3000);
 const pascal = nombre.replace(/(^|-)([a-z])/g, (_, __, c) => c.toUpperCase());
 const destino = join(raiz, 'servicios', tipo, nombre);

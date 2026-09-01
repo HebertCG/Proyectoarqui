@@ -180,4 +180,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Token emitido por Seguridad.Utility (ADR-001).
+      description: >
+        Token de servicio. Cada servicio del inventario autentica a sus consumidores;
+        el modelo de roles y la elevación por PIN son internos a
+        `Sales & Customer Service` (ADR-001), no un servicio extraído.

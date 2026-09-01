@@ -112,39 +112,50 @@ Metadatos de registro.**
 
 ---
 
-## 3. RECONCILIACIÓN ARQUITECTÓNICA (regla crítica)
+## 3. PRINCIPIO ARQUITECTÓNICO — `Sales & Customer Service` es UN servicio del inventario, no todo el proyecto
 
-Los documentos previos describen un **monorepo Local-First con Tauri + React + SQLite**. Eso es arquitectura de
-aplicación, **no es SOA**, y por sí solo NO satisface el curso.
+Los documentos base (`sales_customer_service_arquitectura.md`, `.puml`, `sales_customer_service_requerimientos.md`)
+describen el diseño **completo y cerrado** de uno de los ocho servicios del inventario SOA del proyecto:
+`Sales & Customer Service`. Esa información es **determinante y no se reabre**: define cómo se implementa ese
+servicio (stack, patrones, contratos internos), no cómo se relaciona con el resto del inventario.
 
-**Reencuadre obligatorio, aplicable a todo entregable:**
+**Regla dura:** `Sales & Customer Service` NO es "el consumidor" ni "el proyecto completo" — es **un servicio de
+entidad compuesto**, autónomo, con su propia base de datos local (SQLite/SQLCipher) como autoridad operativa de
+sus cuatro sub-dominios internos (Caja, Venta, CRM, Catálogo — incluyendo Servicios con horario/personal). Se
+comunica con el resto del inventario (`E-Invoicing`, `Payment Gateway`, `Inventory`, `Omnichannel Bot`,
+`Order & Booking Engine`, `Notification & Sync`, `Analytics & Reporting`) a través de contratos definidos —
+síncronos donde el negocio lo requiere, asíncronos vía `sync_outbox` donde aplica (ej. facturación).
+
+**Rol de cada pieza dentro de la arquitectura SOA (sin degradar ni fragmentar):**
 
 | Elemento | Rol en la arquitectura SOA |
 | :--- | :--- |
-| Terminal POS (Tauri/React/SQLite) | **Consumidor de servicios** (service consumer) + *agente de servicio* en el borde. |
-| `RepositoryFactory` | **Service Broker / Adaptador de transporte.** Desacopla al consumidor del proveedor. |
-| Interfaces de dominio (`ITicketRepository`…) | **Contratos de servicio** del lado consumidor. |
-| `sync_outbox` + worker Rust | **Mensajería asíncrona confiable** hacia el ESB (patrón *Transactional Outbox*). |
-| SQLite local | **Caché/réplica local del consumidor**, NO la base de un servicio. |
-| Nube (MySQL/PostgreSQL + REST) | **Inventario de Servicios** — aquí vive la SOA real. |
-| Sub-dominios (Caja, Venta, CRM, Catálogo) | **Servicios de Entidad** autónomos, cada uno con su propia BD. |
+| `Sales & Customer Service` (monorepo Tauri/React/SQLite) | **Servicio de entidad compuesto**, autónomo, con contrato propio hacia el resto del inventario. NO es "el consumidor de otros servicios" ni "toda la SOA". |
+| `RepositoryFactory` | **Adaptador de transporte interno** del servicio — desacopla la UI de si el origen de datos es SQLite local (ejecutable) o la réplica cloud del propio servicio (Web/backoffice). No es un Service Broker entre servicios distintos. |
+| Interfaces de dominio (`ITicketRepository`…) | **Contratos internos** del servicio, entre su UI y su capa de datos. No sustituyen el contrato externo (OpenAPI) que este servicio expone al resto del inventario. |
+| `sync_outbox` + worker Rust | **Mensajería asíncrona confiable** entre la instancia local del servicio y su réplica/nube — mismo patrón que usará este servicio para comunicarse con otros (ej. cola de comprobantes hacia `E-Invoicing`). |
+| SQLite local | **Base de datos propia de este servicio** en su despliegue local-first (cumple P5: autonomía). No es una caché de otro servicio. |
+| Nube (réplica del servicio + API REST) | Contraparte cloud del **mismo** `Sales & Customer Service`, consumida directamente por su propio Backoffice Web. No es "donde vive la SOA real" — la SOA real es el conjunto de los ocho servicios, cada uno con su propia autonomía. |
 
-**Regla dura:** el modelo Local-First NO se elimina — es la evidencia de *comunicación asíncrona*, *autonomía del
-consumidor* e *integridad de procesos*. Pero **la arquitectura evaluada es la SOA de la nube.** Todo diagrama y
-documento debe mostrar primero el inventario de servicios, y el terminal como uno de sus consumidores.
+**Consecuencia práctica:** ningún entregable debe presentar este servicio como si fuera insuficiente o como si
+debiera fragmentarse para "parecer más SOA". Es correcto y suficiente tal como está diseñado. Lo que sí falta,
+y es lo que corresponde construir en las siguientes fases, es el **resto del inventario** (§4) con el que este
+servicio se conecta.
 
 ---
 
 ## 4. Inventario de Servicios — CANÓNICO
 
-Este es el inventario oficial. **No se inventan servicios fuera de esta lista sin actualizar este archivo.**
+Este es el inventario oficial, heredado directamente del documento base del proyecto (`resumen_arquitectura_sistema_pos_soa.md`,
+sección 3). **No se inventan servicios fuera de esta lista sin actualizar este archivo, y no se fragmenta
+ninguno de los ya definidos como compuestos.**
 
 ### 4.1 Capas SOA del proyecto (sesión 9 — "Capas de SOA")
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  CAPA DE CONSUMIDORES                                       │
-│  Terminal POS (Tauri) · Backoffice Web · Bot Omnicanal      │
+│  Backoffice Web (admin) · Apps externas (si las hubiera)    │
 ├─────────────────────────────────────────────────────────────┤
 │  CAPA DE ORQUESTACIÓN / PROCESOS DE NEGOCIO (BPM)           │
 │  Procesos BPMN · Coordinador de transacciones/compensación  │
@@ -152,74 +163,93 @@ Este es el inventario oficial. **No se inventan servicios fuera de esta lista si
 │  ENTERPRISE SERVICE BUS (ESB)                               │
 │  Ruteo · Transformación · Mediación · Registro · Auditoría  │
 ├─────────────────────────────────────────────────────────────┤
-│  CAPA DE SERVICIOS DE TAREA (task / business process)       │
-├─────────────────────────────────────────────────────────────┤
-│  CAPA DE SERVICIOS DE ENTIDAD (entity)                      │
+│  CAPA DE SERVICIOS DE ENTIDAD (autónomos, BD propia c/u)     │
 ├─────────────────────────────────────────────────────────────┤
 │  CAPA DE SERVICIOS DE UTILIDAD (utility, agnósticos)        │
 ├─────────────────────────────────────────────────────────────┤
-│  CAPA DE RECURSOS — una BD por servicio (autonomía P5)      │
+│  CAPA DE RECURSOS — una BD por servicio del inventario (P5)  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 4.2 Servicios de Entidad
+> Nota: `Sales & Customer Service` opera en modo Local-First (terminal Desktop/Tablet + réplica cloud), por lo
+> que además de exponerse como servicio del inventario, tiene su propia capa de despliegue en el borde
+> (ver §5.2). Esto no lo saca del inventario ni lo convierte en "capa de consumidores" — su Backoffice Web sí
+> es un consumidor de sí mismo, tal como cualquier panel de administración consume su propio servicio.
 
-| Servicio | Responsabilidad | RF que cubre |
+### 4.2 Servicios de Entidad (inventario canónico — 8 servicios, sin fragmentar)
+
+| Servicio | Responsabilidad | RF que cubre | Origen |
+| :--- | :--- | :--- | :--- |
+| `Sales & Customer Service` | **Servicio compuesto único**: Caja, Venta/POS, Cliente/CRM, Catálogo (productos y servicios con horario/personal). Una sola BD (SQLite/SQLCipher local + réplica cloud). | RF-CAJA, RF-POS, RF-CRM, RF-CAT, RF-SERV, RF-SYNC, RF-ARQ (documento de requerimientos ya cerrado) | Diseño ya cerrado y determinante — no se reabre. |
+| `Inventory Service` | Stock, Kardex, alertas de mínimos (alcance parcial: descuento, reingreso, consulta — ver nota de alcance ya documentada). | Consumido por `Sales & Customer Service` | Documento base, sección 3 |
+| `Order & Booking Engine` | Motor centralizado de carritos y agendamiento de citas/turnos (pendiente confirmar fusión vs. separación, ver warning). | Consulta catálogo de servicios vía `Sales & Customer Service` | Documento base, sección 3 |
+| `Payment Gateway Service` | Integración con pasarelas externas (Stripe, Niubiz, Culqi, etc.), links de pago y QR dinámicos. | RF de pasarela (a definir en su propio hito) | Documento base, sección 3 |
+| `E-Invoicing Service` | Generación de XML/UBL, firma digital, envío tributario a SUNAT, generación de PDF. **Único servicio con transporte SOAP/WSDL justificado** (ver §5.1). | Consumido por `Sales & Customer Service` vía `sync_outbox` | Documento base, sección 3 |
+| `Omnichannel Bot Service` | WhatsApp Cloud API, IVR, notificaciones de venta/reserva por canal digital. | Consulta catálogo vía `Sales & Customer Service` | Documento base, sección 3 |
+| `Notification & Sync Service` | Notificaciones en tiempo real (WebSockets), orquestación de sincronización entre terminales y nube. | RF-SYNC (transversal) | Documento base, sección 3 |
+| `Analytics & Reporting Service` | Dashboards, consolidación de ventas por canal, cierres de caja, comprobantes multi-serie. | Consume eventos de todos los demás servicios | Documento base, sección 3 |
+
+**Importante:** Caja, Venta, Cliente/CRM y Catálogo **no son servicios separados**. Son sub-dominios internos de
+`Sales & Customer Service`, ya documentados con su propia separación de responsabilidades *dentro* del servicio
+(ver `sales_customer_service_arquitectura.md`, sección 5.1: "Separación de Responsabilidades del Sistema").
+Esa separación interna es suficiente para el principio de **Abstracción** y **Bajo Acoplamiento** — no requiere
+convertirse en servicios independientes con bases de datos distintas para cumplir SOA.
+
+### 4.3 Servicios de Tarea (procesos que atraviesan varios servicios del inventario)
+
+| Servicio | Proceso de negocio | Servicios que orquesta |
 | :--- | :--- | :--- |
-| `Catalogo.Service` | Productos, variantes, combos, listas de precios, versionado | RF-CAT-01…08 |
-| `Cliente.Service` | Ficha, búsqueda, segmentación, fidelización | RF-CRM-01…07 |
-| `Caja.Service` | Turnos, apertura/cierre, movimientos, arqueos | RF-CAJA-01…10 |
-| `Venta.Service` | Tickets, comprobantes, anulaciones, devoluciones | RF-POS-01…19 |
-| `Inventario.Service` | Stock (alcance parcial: descuento, reingreso, consulta) | §3 Requerimientos |
-| `Agenda.Service` | Franjas horarias, personal, recursos físicos | RF-SERV-01…08 |
+| `ProcesoVenta.Task` | Venta de mostrador hasta comprobante fiscal | `Sales & Customer Service` → `E-Invoicing Service` |
+| `ReservaMulticanal.Task` | Reserva/pedido por canal digital validado contra disponibilidad real | `Omnichannel Bot Service` → `Sales & Customer Service` / `Order & Booking Engine` |
+| `ConciliacionPago.Task` | Confirmación de pago remoto y actualización del ticket/reserva asociado | `Payment Gateway Service` → `Sales & Customer Service` |
 
-### 4.3 Servicios de Tarea (orquestan a los de entidad)
-
-| Servicio | Proceso de negocio |
-| :--- | :--- |
-| `ProcesoVenta.Task` | Catálogo → Cliente → Precios → Promociones → Inventario → Caja → Venta → Facturación |
-| `CierreCaja.Task` | Consolidación de movimientos → cálculo de balance esperado → arqueo → cierre |
-| `ReservaServicio.Task` | Validación de disponibilidad de personal + recurso → bloqueo de franja → confirmación |
-| `DevolucionAnulacion.Task` | Reversión de venta + caja + stock + emisión de nota de crédito |
+> Estos procesos de tarea son la evidencia de **Composición** y **Orquestación** exigidas por el temario
+> (sesiones 12, 17–19), y viven en el ESB o en un motor BPM que los coordina — no dentro de ningún servicio
+> de entidad individual.
 
 ### 4.4 Servicios de Utilidad (agnósticos al negocio — máxima reutilización, P4)
 
 | Servicio | Responsabilidad | Justificación |
 | :--- | :--- | :--- |
-| `ValidacionDocumento.Utility` | DNI(8) → Boleta · RUC(11) → Factura · Genérico → Nota de venta | **Resuelve RNF-18**: una sola regla, consumida por Desktop y Web. |
-| `Auditoria.Utility` | Registro append-only de usuario/fecha/detalle de toda operación | RNF-11 + tema de Auditoría (sem. 16–17) |
-| `ReglasPrecio.Utility` | Motor de promociones, cupones, listas de precios | RF-CAT-04/05, RF-POS-14/15/16 |
-| `Sincronizacion.Utility` | Idempotencia por UUIDv4, backoff exponencial, outbox | RF-SYNC-01…07 |
-| `Seguridad.Utility` | Usuarios, roles, PIN de supervisor, autorización de operaciones sensibles | RNF-06, RNF-11 (ver V-02) |
-| `Notificacion.Utility` | Envío de comprobantes y alertas | Transversal |
+| `Auditoria.Utility` | Registro append-only de usuario/fecha/detalle de toda operación relevante en el bus. | RNF-11 + tema de Auditoría (sesiones 31–34) |
+| `Sincronizacion.Utility` | Patrón de idempotencia (UUIDv4) y backoff exponencial, reutilizable por cualquier servicio que necesite comunicación asíncrona confiable (no solo `Sales & Customer Service`). | RF-SYNC-01…07 |
+| `Notificacion.Utility` | Envío de comprobantes y alertas transversales entre servicios. | Transversal |
 
-### 4.5 Servicios Externos / B2B (sesiones 23, 25–26 — "Business to Business")
+> `ValidacionDocumento` (DNI/RUC/genérico) y `ReglasPrecio` (promociones/cupones) **no se extraen** como
+> servicios de utilidad separados: son reglas de negocio propias del dominio de venta, ya resueltas dentro de
+> `Sales & Customer Service` (RF-POS-17/18/19, RF-CAT-04/05). Extraerlas violaría el principio de Autonomía
+> (P5) sin ningún beneficio de reutilización real, ya que ningún otro servicio del inventario las necesita.
 
-`EInvoicing.Service` (→ SUNAT vía PSE/OSE) · `PaymentGateway.Service` · `Omnichannel.Service` ·
-`Analytics.Service` · `OrderBooking.Service`
+### 4.5 Regla de autonomía (P5) — aplicada entre servicios del inventario
 
-### 4.6 Regla de autonomía (P5) — NO NEGOCIABLE
+**Cada servicio del inventario (§4.2) tiene su propia base de datos. Ningún servicio lee directamente las tablas
+de otro.** Toda interacción entre servicios distintos ocurre por contrato a través del ESB.
 
-**Cada servicio tiene su propia base de datos. Ningún servicio lee tablas de otro.** Toda interacción ocurre
-por contrato a través del ESB. Compartir BD entre servicios es la falta más grave posible en este proyecto.
+Esta regla se aplica **entre los ocho servicios del inventario**, no dentro de un mismo servicio compuesto. Los
+sub-dominios internos de `Sales & Customer Service` (Caja, Venta, CRM, Catálogo) comparten intencionalmente una
+misma base de datos local, porque son parte de un solo servicio autónomo — esa es precisamente la decisión
+arquitectónica que evita llamadas cruzadas constantes en el momento del ticket de venta, ya justificada y
+cerrada en el diseño base.
 
-### 4.7 Alcance de implementación por niveles — REALISMO DE ENTREGA
+### 4.6 Alcance de implementación por niveles — REALISMO DE ENTREGA
 
-El inventario tiene 16 servicios propios más los externos. **Diseñarlos todos es obligatorio; implementarlos
-todos no es viable en 18 semanas.** El sílabo evalúa la *arquitectura*, no la cantidad de código.
+El inventario tiene 8 servicios de entidad + servicios de tarea + servicios de utilidad. **Diseñarlos todos es
+obligatorio; implementarlos todos con el mismo nivel de profundidad no es viable en 18 semanas.** El sílabo
+evalúa la *arquitectura*, no la cantidad de código.
 
-**Regla de oro:** los 16 se **diseñan con contrato completo** (APF2, donde el diseño es lo evaluado).
-La implementación se prioriza por niveles. **Nunca se empieza un nivel sin cerrar el anterior.**
+**Regla de oro:** los 8 servicios de entidad se **diseñan con contrato completo** (APF2, donde el diseño es lo
+evaluado). La implementación se prioriza por niveles. **Nunca se empieza un nivel sin cerrar el anterior.**
 
 | Nivel | Servicios | Estado exigido |
 | :--- | :--- | :--- |
-| **N1 — Núcleo demostrable** | `Catalogo` · `Cliente` · `Venta` · `Caja` (entidad)<br>`ValidacionDocumento` · `Auditoria` · `Seguridad` (utilidad)<br>`ProcesoVenta` (tarea) · `EInvoicing` (SOAP)<br>**ESB · Registro UDDI** | **Implementado y funcionando.** Es el mínimo que sostiene la demo del PROY end-to-end. |
-| **N2 — Ampliación** | `Inventario` · `Agenda` (entidad)<br>`ReglasPrecio` · `Sincronizacion` (utilidad)<br>`CierreCaja` · `ReservaServicio` · `DevolucionAnulacion` (tarea) | **Implementado si N1 está cerrado.** Prioridad en ese orden. |
-| **N3 — Simulado** | `PaymentGateway` · `Omnichannel` · `Analytics` · `OrderBooking` | **Diseñado + stub registrado en UDDI.** Contrato real, respuesta simulada. Se documenta como tal. |
+| **N1 — Núcleo demostrable** | `Sales & Customer Service` (implementación completa, ya diseñada)<br>`Auditoria.Utility` · `Sincronizacion.Utility`<br>`ProcesoVenta.Task` · `E-Invoicing Service` (SOAP)<br>**ESB · Registro UDDI** | **Implementado y funcionando.** Es el mínimo que sostiene la demo del PROY end-to-end. |
+| **N2 — Ampliación** | `Inventory Service` · `Order & Booking Engine`<br>`Notification & Sync Service`<br>`ReservaMulticanal.Task` | **Implementado si N1 está cerrado.** Prioridad en ese orden. |
+| **N3 — Simulado** | `Payment Gateway Service` · `Omnichannel Bot Service` · `Analytics & Reporting Service` | **Diseñado + stub registrado en UDDI.** Contrato real, respuesta simulada. Se documenta como tal. |
 
 **Por qué N1 es exactamente este conjunto:** cubre el flujo completo *venta → comprobante → sincronización →
-facturación → auditoría* que exige el PROY (§8.4), atraviesa las tres capas de servicio, e incluye los dos
-protocolos (REST y SOAP) necesarios para demostrar mediación en el ESB.
+facturación → auditoría* que exige el PROY (§8.4), y demuestra la mediación de protocolos en el ESB
+(REST del `Sales & Customer Service` ⇄ SOAP del `E-Invoicing Service` hacia SUNAT) — el único punto del
+inventario donde SOAP tiene justificación técnica real (ver §5.1).
 
 **Un stub de N3 no es trampa** si tiene contrato formal, está registrado y su naturaleza simulada está
 documentada. Es una práctica legítima de *service virtualization*. Presentarlo como servicio real sí lo sería.
@@ -284,7 +314,7 @@ Un inventario 100% REST dejaría al ESB sin mediación que demostrar.
 
 | Componente | Tecnología | Estado |
 | :--- | :--- | :--- |
-| Terminal POS (consumidor) | React 18 + TS + Vite + Tailwind + Zustand + Tauri 2.0 + Rust + SQLite/SQLCipher | **Fijado** |
+| `Sales & Customer Service` (despliegue local-first) | React 18 + TS + Vite + Tailwind + Zustand + Tauri 2.0 + Rust + SQLite/SQLCipher | **Fijado, diseño ya cerrado** |
 | Runtime de servicios | Node.js 22 LTS (o superior LTS) + TypeScript 5.x, ESM | **Fijado** |
 | Framework de servicios | Fastify 5 + TypeBox (validación JSON Schema en el borde) | **Fijado** |
 | Monorepo | pnpm workspaces (+ Turborepo si el build lo justifica) | **Fijado** |
@@ -376,19 +406,28 @@ ProyectoArqui/
 │   └── xslt/                          ← transformaciones del ESB
 │
 ├── servicios/
-│   ├── entidad/{catalogo,cliente,caja,venta,inventario,agenda}/
-│   ├── tarea/{proceso-venta,cierre-caja,reserva-servicio,devolucion-anulacion}/
-│   └── utilidad/{validacion-documento,auditoria,reglas-precio,sincronizacion,seguridad,notificacion}/
+│   ├── entidad/
+│   │   ├── sales-customer-service/    ← monorepo ya diseñado: src/ (React) + src-tauri/ (Rust) + réplica cloud
+│   │   ├── inventory-service/
+│   │   ├── order-booking-engine/
+│   │   ├── payment-gateway-service/
+│   │   ├── einvoicing-service/        ← único servicio con contrato SOAP/WSDL
+│   │   ├── omnichannel-bot-service/
+│   │   ├── notification-sync-service/
+│   │   └── analytics-reporting-service/
+│   ├── tarea/{proceso-venta,reserva-multicanal,conciliacion-pago}/
+│   └── utilidad/{auditoria,sincronizacion,notificacion}/
 │
 ├── esb/                               ← ruteo, mediación, transformación, políticas
 ├── orquestacion/                      ← BPMN, definiciones de proceso, compensación
 ├── registro/                          ← UDDI / catálogo de servicios
-├── terminal-pos/                      ← consumidor Local-First (Tauri + React)
 └── infra/                             ← docker-compose, scripts, despliegue
 ```
 
-**Regla:** cada servicio, sin excepción, contiene: `contrato/` · `src/` · `tests/` · `README.md` (con la ficha
-de servicio de §2.1 y §2.3) · `db/` (migraciones propias).
+**Regla:** cada servicio de entidad, sin excepción, contiene: `contrato/` · `src/` · `tests/` · `README.md`
+(con la ficha de servicio de §2.1 y §2.3) · `db/` (migraciones propias). En el caso de
+`sales-customer-service/`, su `db/` corresponde al esquema SQLite local ya definido y su réplica cloud —
+no se subdivide en carpetas por sub-dominio con bases de datos distintas.
 
 ---
 
@@ -396,8 +435,8 @@ de servicio de §2.1 y §2.3) · `db/` (migraciones propias).
 
 | Elemento | Convención | Ejemplo |
 | :--- | :--- | :--- |
-| Servicio | `Dominio.Nombre.Tipo` | `Ventas.Catalogo.Entity` |
-| Namespace XML | `urn:pos:{dominio}:{servicio}:v{n}` | `urn:pos:ventas:catalogo:v1` |
+| Servicio | `Dominio.Nombre.Tipo` | `Pos.SalesCustomer.Entity`, `Pos.EInvoicing.Entity` |
+| Namespace XML | `urn:pos:{servicio}:v{n}` | `urn:pos:sales-customer:v1`, `urn:pos:einvoicing:v1` |
 | Operación | Verbo + Sustantivo | `ConsultarProducto`, `RegistrarVenta` |
 | Mensaje | `{Operacion}Request` / `{Operacion}Response` | `RegistrarVentaRequest` |
 | Evento asíncrono | `{Entidad}{VerboPasado}` | `VentaRegistrada`, `CajaCerrada` |
@@ -456,8 +495,10 @@ Cubre sesiones 11–19. **Producto: diseño arquitectónico completo. Aún sin i
 
 Cubre sesiones 21–29. **Producto: servicios FUNCIONANDO. El curso es práctico.**
 
-- [ ] **Nivel N1 completo** (§4.7) implementado y desplegado, consumible vía HTTP. N2 según tiempo disponible.
-- [ ] **Servicios de Utilidad implementados**, con `ValidacionDocumento` demostrando reutilización real (P4).
+- [ ] **Nivel N1 completo** (§4.6) implementado y desplegado, consumible vía HTTP: `Sales & Customer Service`
+      operativo (Desktop/Tablet + Web) y `E-Invoicing Service` conectados a través del ESB. N2 según tiempo disponible.
+- [ ] **Servicios de Utilidad implementados**, con `Sincronizacion.Utility` demostrando reutilización real (P4)
+      entre `Sales & Customer Service` y cualquier otro servicio que requiera comunicación asíncrona confiable.
 - [ ] **≥1 servicio SOAP con WSDL** funcional e invocable.
 - [ ] **Capas a nivel empresarial** evidenciadas en el despliegue.
 - [ ] **Registro de Servicios (UDDI)** operativo, consultable, con metadatos de descubrimiento (P7).
@@ -480,7 +521,8 @@ Cubre sesiones 31–34 + consolidación total. **Producto: sistema completo, ope
 - [ ] **Auditoría implementada** (tema de las sesiones 31–34, peso alto): registro append-only de toda operación
       con usuario, fecha/hora y detalle (RNF-11); trazabilidad de mensajes a través del bus; consulta de auditoría.
 - [ ] **Orquestación end-to-end** ejecutándose sobre el bus.
-- [ ] **Terminal POS Local-First integrado** como consumidor, con sincronización asíncrona operativa.
+- [ ] **`Sales & Customer Service` operativo end-to-end** en sus tres builds (Desktop, Tablet, Web), con
+      sincronización asíncrona local↔cloud funcionando y conectado al resto del inventario vía ESB.
 - [ ] **Demostración funcional completa:** venta → comprobante → sincronización → facturación → auditoría.
 - [ ] **Operación offline demostrada** (RNF-01) con recuperación posterior.
 - [ ] **Documentación arquitectónica final consolidada.**
@@ -502,7 +544,10 @@ Cubre sesiones 31–34 + consolidación total. **Producto: sistema completo, ope
    de dominio". "Composición", no "agregación". "Inventario de servicios", no "catálogo de APIs".
 5. **Checklist de los 8 principios** llenado antes de dar por diseñado cualquier servicio.
 6. **Trazabilidad obligatoria.** Todo artefacto se enlaza a: (a) ítem del temario, (b) RF/RNF que cubre.
-7. **Un servicio, una BD.** Jamás propongo acceso cruzado a datos entre servicios.
+7. **Un servicio del inventario (§4.2), una BD.** Jamás propongo acceso cruzado a datos entre servicios
+   distintos. Esto no obliga a fragmentar los sub-dominios internos ya definidos como parte de un mismo
+   servicio compuesto (`Sales & Customer Service`: Caja, Venta, CRM, Catálogo comparten intencionalmente
+   una misma base de datos, por diseño ya cerrado).
 8. **Todo pasa por el ESB.** No propongo integración punto a punto entre servicios. Ese es exactamente el error
    que el curso enseña a evitar.
 9. **Español** en documentación, nombres de servicios y operaciones.
@@ -557,10 +602,14 @@ Detectados en el análisis de los documentos base. Se resuelven a más tardar en
 
 | # | Vacío | Impacto | Resolver en |
 | :--- | :--- | :--- | :--- |
-| ~~V-01~~ | ~~Consulta de stock offline.~~ **RESUELTO:** réplica local con descuento optimista; la nube es la autoridad y reconcilia. Ver [ADR-004](docs/adr/004-stock-offline.md). | — | ✅ Cerrado |
+| ~~V-01~~ | ~~Consulta de stock offline.~~ **RESUELTO:** `Inventory Service` también es local-first; no hay réplica dentro de Sales & Customer. Ver [ADR-006](docs/adr/006-stock-inventory-local-first.md) (reemplaza a ADR-004). | — | ✅ Cerrado |
 | ~~V-02~~ | ~~Usuarios, roles y autenticación sin definir.~~ **RESUELTO:** tres roles fijos + elevación por PIN de supervisor. Ver [ADR-001](docs/adr/001-seguridad-roles-pin.md). | — | ✅ Cerrado |
 | ~~V-03~~ | ~~Notas de crédito no modeladas.~~ **RESUELTO:** máquina de estados del comprobante; el estado tributario decide la reversión legal. Ver [ADR-002](docs/adr/002-anulacion-nota-credito.md). | — | ✅ Cerrado |
 | ~~V-04~~ | ~~Precedencia de precios sin definir.~~ **RESUELTO:** cascada lista → promoción → cupón → manual, con bandera `acumulable`. Ver [ADR-003](docs/adr/003-precedencia-precios.md). | — | ✅ Cerrado |
+| **V-07** | **Topología multi-caja por local** (documento base §4): Opción A cajas independientes vs. Opción B hub local en LAN. Define si hay concurrencia sobre el stock. | Alto | APF2 |
+| **V-08** | **`Order & Booking Engine`: ¿separado o fusionado** en `Sales & Customer Service`? (documento base §5.3, §8.2). **Cambia el inventario: 8 servicios o 7.** | Alto | APF1 |
+| **V-09** | **Homologación SUNAT** del modelo de series por caja con el PSE/OSE elegido (documento base §8.3). Riesgo legal, no técnico. | Medio | APF3 |
+| **V-10** | **Expansión multi-local** (documento base §8.4): aislamiento de stock vs. transferencias entre almacenes. | Bajo | Fuera de alcance actual |
 | V-05 | Búsqueda <300ms sobre 50k productos / 100k clientes (RNF-03 + RNF-15) requiere FTS5 sobre SQLCipher. Sin validar. | Medio | Fase 7 |
 | ~~W-02~~ | ~~SQLCipher: compilación multiplataforma sin validar.~~ **RESUELTO:** OpenSSL vendorizado + Strawberry Perl como prerequisito. Ver [ADR-005](docs/adr/005-sqlcipher-openssl.md). | — | ✅ Cerrado |
 | ~~V-06~~ | ~~Stack de servicios cloud y ESB sin confirmar.~~ **RESUELTO:** Node.js + TypeScript en todo el proyecto, ESB propio sobre Fastify + RabbitMQ (§5.2, §5.3). | — | ✅ Cerrado |
@@ -569,7 +618,13 @@ Detectados en el análisis de los documentos base. Se resuelven a más tardar en
 
 ## 12. Prohibiciones Explícitas
 
-- **Presentar el monorepo Local-First como si fuera la arquitectura SOA.** Es el consumidor (§3).
+- **Presentar `Sales & Customer Service` como si fuera *todo* el inventario SOA del proyecto.** Es uno de
+  los ocho servicios (§4.2); el resto (`Inventory`, `Order & Booking`, `Payment Gateway`, `E-Invoicing`,
+  `Omnichannel Bot`, `Notification & Sync`, `Analytics & Reporting`) también deben implementarse o al menos
+  contractualmente definirse para que el proyecto sea evaluable como arquitectura orientada a servicios.
+- **Fragmentar `Sales & Customer Service` en servicios separados con bases de datos distintas** (ej. tratar
+  Catálogo, Cliente, Caja o Venta como servicios independientes) para intentar que el inventario "se vea más
+  SOA". Su diseño compuesto ya está cerrado y es determinante (§3).
 - **Compartir base de datos entre servicios.** Viola P5.
 - **Integración punto a punto entre servicios** saltándose el ESB.
 - **Implementar antes del contrato.**
@@ -582,7 +637,7 @@ Detectados en el análisis de los documentos base. Se resuelven a más tardar en
 - **Cambiar el stack de §5.2.** La decisión está cerrada; cambiarla invalida contratos y plan de hitos.
 - **Poner lógica de negocio dentro del ESB.** El bus rutea, transforma, media y audita — nada más (§5.3).
 - **Instalar dependencias sin registrarlas** en `docs/03-implementacion/`.
-- **Implementar servicios del Nivel 3** (§4.7) en lugar de completar los del Nivel 1.
+- **Implementar servicios del Nivel 3** (§4.6) en lugar de completar los del Nivel 1.
 
 ---
 

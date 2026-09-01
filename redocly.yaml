@@ -6,16 +6,9 @@
 # Contract-first: si el contrato no pasa el lint, no se implementa (CLAUDE.md §9.1.1).
 
 apis:
-  validacion-documento@v1:
-    root: contratos/openapi/validacion-documento-v1.yaml
-    x-openapi-ts:
-      output: packages/contracts/src/generado/validacion-documento-v1.ts
-
-  seguridad@v1:
-    root: contratos/openapi/seguridad-v1.yaml
-    x-openapi-ts:
-      output: packages/contracts/src/generado/seguridad-v1.ts
-
+  # Contratos externos de los servicios del inventario (CLAUDE.md 4.2).
+  # Cada servicio del inventario expone UN contrato. Los sub-dominios internos
+  # de un servicio compuesto NO tienen contrato propio: son internos a el.
   auditoria@v1:
     root: contratos/openapi/auditoria-v1.yaml
     x-openapi-ts:

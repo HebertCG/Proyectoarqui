@@ -1,8 +1,13 @@
 # ADR-004 — Stock offline: replica local con descuento optimista
 
-**Estado:** Aceptado · 2026-08-29
+**Estado:** ⛔ **REEMPLAZADO por [ADR-006](006-stock-inventory-local-first.md)** · 2026-09-01
 **Cierra:** V-01 · **Habilita:** RNF-01, RF-SYNC-05
 **Servicios afectados:** `Inventario.Service`, `Sincronizacion.Utility`, terminal POS
+
+> **Por que se reemplazo:** este ADR partia de la premisa de que `Inventory Service` vivia solo en la nube.
+> El documento base lo desmiente: §6 lo declara *"No (opera local, sincroniza cuando hay conexion)"* y §2.2
+> lista el descuento de stock entre lo que funciona 100% offline. La premisa era falsa, asi que la decision
+> construida sobre ella no se sostiene. Ver [ADR-006](006-stock-inventory-local-first.md).
 
 ## Contexto
 

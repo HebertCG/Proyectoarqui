@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Comprobante xmlns="urn:pos:ventas:comprobante:v1">
+<Comprobante xmlns="urn:pos:einvoicing:v1">
   <uuid>3f7c1e94-9b2a-4d51-a8e3-6c0f5d2b8a17</uuid>
   <tipoComprobante>FACTURA</tipoComprobante>
   <serie>F001</serie>

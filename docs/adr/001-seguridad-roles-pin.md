@@ -2,7 +2,7 @@
 
 **Estado:** Aceptado · 2026-08-29
 **Cierra:** V-02 · **Habilita:** RNF-06, RNF-11
-**Servicio afectado:** `Seguridad.Utility`
+**Servicio afectado:** `Sales & Customer Service` (sub-dominio interno)
 
 ## Contexto
 
@@ -35,7 +35,22 @@ reexpresar como conjuntos de permisos sin romper contratos.
 
 ## Consecuencias
 
-- `Seguridad.Utility` entra en el Nivel N1 (CLAUDE.md §4.7): todos los demas dependen de el.
+- Vive **dentro** de `Sales & Customer Service`, no como servicio extraido: ningun otro servicio del
+  inventario necesita estos roles, asi que extraerlo violaria P5 sin beneficio de reutilizacion (CLAUDE.md §4.4).
 - Toda entrada de auditoria lleva el usuario que **autorizo**, que puede diferir del que opera.
-- Offline el terminal valida el PIN contra su replica local de credenciales; el token se renueva al sincronizar.
+- Offline el terminal valida el PIN contra su base local; es coherente con que el servicio sea local-first.
 - Los roles quedan fijos en el contrato. Anadir uno es un cambio de version del contrato.
+
+
+---
+
+## Correccion posterior (2026-09-01)
+
+La decision no cambia. Lo que se corrige es **donde vive**.
+
+La version original de este ADR asignaba la decision a un servicio `Seguridad.Utility` extraido del
+inventario. Eso fue consecuencia de un error de interpretacion arquitectonica: se fragmento
+`Sales & Customer Service`, que es un servicio compuesto por diseno cerrado.
+
+Roles, PIN y autorizacion de operaciones sensibles son **reglas internas del sub-dominio de Caja y Venta**.
+Ningun otro servicio del inventario las consume. Ver `docs/00-base/correccion-arquitectonica.md`.

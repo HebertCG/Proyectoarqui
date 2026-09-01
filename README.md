@@ -27,24 +27,61 @@ sin internet**, sincronizando después.
 
 ---
 
-## Arquitectura en una imagen
+## Arquitectura
+
+El sistema es un **inventario de ocho servicios SOA**. `Sales & Customer Service` es **uno**
+de ellos — el núcleo operativo, pero no el proyecto completo.
 
 ```
-CONSUMIDORES     Terminal POS (Tauri)  ·  Backoffice Web
+CONSUMIDORES     Backoffice Web (admin)  ·  Apps externas
                               │
-ORQUESTACIÓN     Procesos BPMN  ·  Compensación / saga
+ORQUESTACIÓN     ProcesoVenta · ReservaMulticanal · ConciliacionPago  (BPMN)
                               │
       ESB        Ruteo (XPath) · Transformación (XSLT) · Mediación REST⇄SOAP · Auditoría
                               │
-   SERVICIOS     Tarea      →  ProcesoVenta, CierreCaja, ReservaServicio…
-                 Entidad    →  Catálogo, Cliente, Caja, Venta, Inventario, Agenda
-                 Utilidad   →  ValidaciónDocumento, Auditoría, Seguridad, ReglasPrecio…
+   ENTIDAD       Sales & Customer · Inventory · Order & Booking · Payment Gateway
+                 E-Invoicing · Omnichannel Bot · Notification & Sync · Analytics
                               │
-    RECURSOS     Una base de datos por servicio  (autonomía, principio P5)
+   UTILIDAD      Auditoría · Sincronización · Notificación
+                              │
+    RECURSOS     Una base de datos por servicio del inventario  (autonomía, P5)
 ```
 
-El terminal Local-First **es un consumidor de servicios**, no la arquitectura evaluada.
-Ver [`CLAUDE.md` §3](CLAUDE.md) para el reencuadre completo.
+### La decisión que define el proyecto
+
+`Sales & Customer Service` **fusiona deliberadamente** cuatro sub-dominios — Caja, Venta/POS,
+Cliente/CRM y Catálogo — en un solo servicio autónomo con una sola base de datos.
+
+No es un atajo: es la decisión que evita llamadas cruzadas constantes entre servicios que el
+cajero necesita **en el mismo instante** del ticket de venta. Busca el cliente, consulta el
+precio, aplica la promoción y cobra en un solo flujo.
+
+**Esa fusión no se reabre.** Fragmentarla para que "parezca más SOA" está explícitamente
+prohibido en [`CLAUDE.md`](CLAUDE.md) §12. El detalle está en
+[docs/00-base/correccion-arquitectonica.md](docs/00-base/correccion-arquitectonica.md).
+
+### Dónde vive SOAP, y por qué solo ahí
+
+El único punto del inventario con justificación técnica real para SOAP/WSDL/XML es
+`E-Invoicing Service`: SUNAT exige XML/UBL, firma digital XMLDSig, y responde con un CDR
+en XML.
+
+Ahí el ESB demuestra su función real — mediar entre `Sales & Customer Service`, que opera
+en REST/JSON, y SUNAT, que exige SOAP/XML. Forzar SOAP en el resto no demostraría dominio
+de SOA: demostraría lo contrario.
+
+### Tres builds, un mismo código
+
+`Sales & Customer Service` se despliega desde un solo monorepo:
+
+| Build | Datos | Uso |
+| :--- | :--- | :--- |
+| **Desktop** (Windows, Tauri) | SQLite/SQLCipher local | Terminal POS, opera sin internet |
+| **Tablet** (Android, Tauri) | SQLite/SQLCipher local | Mismo núcleo, interacción táctil |
+| **Web** (React estático) | API REST contra réplica cloud | Backoffice y administración |
+
+El `RepositoryFactory` resuelve en tiempo de arranque si hablar con SQLite o con la API,
+de modo que el mismo código de UI sirve para los tres sin bifurcaciones por plataforma.
 
 ---
 
@@ -89,7 +126,7 @@ cd Proyectoarqui
 cp .env.example .env      # valores de desarrollo, ajusta si hace falta
 pnpm install              # instala y regenera tipos y XSLT compilado
 
-pnpm infra:up             # PostgreSQL (18 bases) + RabbitMQ
+pnpm infra:up             # PostgreSQL (una base por servicio) + RabbitMQ
 pnpm test                 # debe quedar todo en verde
 ```
 
@@ -105,8 +142,9 @@ pnpm contratos:tipos    # regenera tipos TypeScript desde los contratos
 pnpm infra:down         # detiene la infraestructura
 pnpm infra:reset        # la detiene y BORRA los datos
 
-# Crear un servicio nuevo del inventario
-node tools/crear-servicio.mjs catalogo entidad 3001
+# Crear un servicio DEL INVENTARIO (§4.2). Los sub-dominios internos de
+# Sales & Customer Service no son servicios: el generador los rechaza.
+node tools/crear-servicio.mjs inventory-service entidad 3002
 ```
 
 ---
@@ -115,16 +153,24 @@ node tools/crear-servicio.mjs catalogo entidad 3001
 
 ```
 contratos/          Contract-first: XSD, OpenAPI, WSDL, XSLT. Siempre antes del código.
-servicios/          entidad/ · tarea/ · utilidad/
+                    Un namespace por servicio del inventario.
+servicios/
+  entidad/          Los 8 servicios del inventario canónico
+    sales-customer-service/    ← monorepo Tauri + React + réplica cloud
+    inventory-service/
+    einvoicing-service/        ← único con contrato SOAP/WSDL
+    ...
+  tarea/            proceso-venta · reserva-multicanal · conciliacion-pago
+  utilidad/         auditoria · sincronizacion · notificacion
 packages/           service-kit (base común) · xml-kit (toolchain XML) · contracts (tipos)
 esb/                Ruteo, mediación, transformación, políticas
 registro/           Registro de servicios con modelo de datos UDDI
 orquestacion/       Procesos BPMN
-terminal-pos/       Consumidor Local-First (Tauri + React)
 infra/              docker-compose y scripts
+docs/00-base/       Documentos fuente. Determinantes, no se reinterpretan.
 docs/adr/           Decisiones de arquitectura con su justificación
 spikes/             Pruebas de riesgo técnico de la Fase 0
-tools/              Generador de servicios
+tools/              Generador de servicios del inventario
 ```
 
 ---
@@ -134,14 +180,14 @@ tools/              Generador de servicios
 | Fase | Estado |
 | :--- | :--- |
 | **0 — Fundaciones** | ✅ Completa. Infra, service-kit, xml-kit, generador, 4 spikes |
-| **1 — Contratos** | 🔄 En curso. 6 XSD canónicos + capa de utilidad completa |
-| 2 — Esqueleto vertical | Pendiente |
-| 3 — Servicios de utilidad | Pendiente |
-| 4 — Servicios de entidad | Pendiente |
-| 5 — Orquestación y BPM | Pendiente |
-| 6 — EInvoicing SOAP | Pendiente |
-| 7 — Terminal POS | Pendiente |
-| 8 — Integración y demo | Pendiente |
+| **1 — Contratos** | 🔄 En curso. Esquemas canónicos por servicio + `Auditoria.Utility` |
+| 2 — Fichas de los 7 servicios restantes | Pendiente |
+| 3 — Esqueleto vertical sobre el ESB | Pendiente |
+| 4 — `Sales & Customer Service` (3 builds) | Pendiente |
+| 5 — `E-Invoicing Service` (SOAP) + mediación | Pendiente |
+| 6 — Orquestación y BPM | Pendiente |
+| 7 — Servicios N2 | Pendiente |
+| 8 — Integración, auditoría y demo | Pendiente |
 
 ---
 

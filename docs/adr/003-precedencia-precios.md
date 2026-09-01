@@ -2,7 +2,7 @@
 
 **Estado:** Aceptado · 2026-08-29
 **Cierra:** V-04 · **Habilita:** RF-POS-03, RF-POS-14, RF-POS-15, RF-POS-16, RF-CAT-03, RF-CAT-04, RF-CAT-05
-**Servicio afectado:** `ReglasPrecio.Utility`
+**Servicio afectado:** `Sales & Customer Service` (sub-dominio Catalogo + Venta)
 
 ## Contexto
 
@@ -35,7 +35,19 @@ cliente pregunta. La previsibilidad pesa mas que el optimo.
 
 ## Consecuencias
 
-- `ReglasPrecio.Utility` es determinista: mismas entradas, mismo resultado siempre. Facil de probar.
+- El motor de precios es determinista: mismas entradas, mismo resultado siempre. Facil de probar.
 - El ticket guarda el desglose etapa por etapa, no solo el total.
 - La misma cascada corre en el terminal offline y en la nube: una sola implementacion compartida.
 - Anadir un quinto mecanismo de precio exige decidir explicitamente su posicion en la cascada.
+
+
+---
+
+## Correccion posterior (2026-09-01)
+
+La cascada no cambia. Lo que se corrige es **donde vive**.
+
+La version original asignaba esta logica a un servicio `ReglasPrecio.Utility` extraido. El documento base
+(§5.1) ya situa el motor de promociones y descuentos **dentro** del Catalogo de
+`Sales & Customer Service`, y CLAUDE.md §4.4 lo confirma explicitamente: extraerlo violaria Autonomia (P5)
+sin beneficio de reutilizacion real, porque ningun otro servicio del inventario lo necesita.

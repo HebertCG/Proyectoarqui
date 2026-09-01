@@ -1,0 +1,422 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sales & Customer Service — esquema canónico del servicio.
+
+  UN servicio del inventario, UN namespace, UN contrato (CLAUDE.md §3 y §7).
+
+  Caja, Venta/POS, Cliente/CRM y Catálogo son **sub-dominios internos** de este
+  servicio, no servicios separados. Comparten intencionalmente una misma base de
+  datos porque el cajero los necesita en el mismo instante del ticket de venta —
+  decisión de diseño ya cerrada (documento base §5.1, CLAUDE.md §4.5).
+
+  Por eso todos viven en un solo esquema con un solo targetNamespace: la
+  estructura del contrato refleja la estructura real del servicio.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="urn:pos:sales-customer:v1"
+           xmlns:c="urn:pos:comun:v1"
+           targetNamespace="urn:pos:sales-customer:v1"
+           elementFormDefault="qualified">
+
+  <xs:import namespace="urn:pos:comun:v1" schemaLocation="tipos-comunes-v1.xsd"/>
+
+  <!-- ================================================================== -->
+  <!--  SUB-DOMINIO: CLIENTE / CRM          (RF-CRM-01…07)                -->
+  <!-- ================================================================== -->
+
+  <xs:simpleType name="Segmento">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="REGULAR"/>
+      <xs:enumeration value="VIP"/>
+      <xs:enumeration value="FRECUENTE"/>
+      <xs:enumeration value="MAYORISTA"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="Contacto">
+    <xs:sequence>
+      <xs:element name="telefono" type="c:TextoCorto" minOccurs="0"/>
+      <xs:element name="correo" type="c:TextoCorto" minOccurs="0"/>
+      <xs:element name="direccion" type="c:TextoLargo" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Motor de fidelización (RF-CRM-06). -->
+  <xs:complexType name="Fidelizacion">
+    <xs:sequence>
+      <xs:element name="puntosAcumulados" type="xs:nonNegativeInteger"/>
+      <xs:element name="puntosRedimidos" type="xs:nonNegativeInteger"/>
+      <xs:element name="ultimaActividad" type="xs:dateTime" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="Cliente">
+    <xs:sequence>
+      <xs:element name="uuid" type="c:Uuid"/>
+      <xs:element name="tipoDocumento" type="c:TipoDocumento"/>
+      <!-- Ausente cuando tipoDocumento es GENERICO. -->
+      <xs:element name="numeroDocumento" type="c:NumeroDocumento" minOccurs="0"/>
+      <!-- Identificador interno para clientes sin documento tributario. -->
+      <xs:element name="codigoInterno" type="c:TextoCorto" minOccurs="0"/>
+      <xs:element name="razonSocial" type="c:TextoCorto"/>
+      <xs:element name="nombreComercial" type="c:TextoCorto" minOccurs="0"/>
+      <xs:element name="contacto" type="Contacto" minOccurs="0"/>
+      <xs:element name="segmento" type="Segmento" default="REGULAR"/>
+      <!-- Lista de precios aplicable (RF-POS-16). Sub-dominio Catálogo, mismo servicio. -->
+      <xs:element name="listaPrecios" type="c:TextoCorto" minOccurs="0"/>
+      <xs:element name="fidelizacion" type="Fidelizacion" minOccurs="0"/>
+      <!-- RF-CRM-07: baja lógica, nunca física. -->
+      <xs:element name="activo" type="xs:boolean" default="true"/>
+      <xs:element name="trazabilidad" type="c:Trazabilidad"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ================================================================== -->
+  <!--  SUB-DOMINIO: CATÁLOGO       (RF-CAT-01…08, RF-SERV-01…08)         -->
+  <!-- ================================================================== -->
+
+  <!--
+    La distinción central del dominio (documento base §7):
+    un PRODUCTO depende de stock; un SERVICIO depende de disponibilidad de
+    tiempo, personal y recurso físico.
+  -->
+  <xs:simpleType name="TipoItem">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="PRODUCTO"/>
+      <xs:enumeration value="SERVICIO"/>
+      <xs:enumeration value="COMBO"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="Variante">
+    <xs:sequence>
+      <xs:element name="sku" type="c:Sku"/>
+      <xs:element name="atributo" type="c:TextoCorto"/>
+      <xs:element name="valor" type="c:TextoCorto"/>
+      <xs:element name="precioDiferencial" type="c:MontoConSigno" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Listas diferenciadas: regular, VIP, mayorista (RF-CAT-03). -->
+  <xs:complexType name="PrecioLista">
+    <xs:sequence>
+      <xs:element name="lista" type="c:TextoCorto"/>
+      <xs:element name="precio" type="c:Monto"/>
+      <xs:element name="vigenteDesde" type="xs:date"/>
+      <xs:element name="vigenteHasta" type="xs:date" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ComponenteItem">
+    <xs:sequence>
+      <xs:element name="sku" type="c:Sku"/>
+      <xs:element name="cantidad" type="xs:positiveInteger"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Solo para tipoItem = SERVICIO (RF-SERV-01…03, RF-SERV-08). -->
+  <xs:complexType name="DatosServicio">
+    <xs:sequence>
+      <xs:element name="duracionMinutos" type="xs:positiveInteger"/>
+      <xs:element name="especialistas" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="especialistaId" type="c:Uuid" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <!-- Recursos físicos limitados: sala, silla, equipo. -->
+      <xs:element name="recursos" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="recursoId" type="c:Uuid" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <!-- Insumos que consume la atención. Los descuenta Inventory Service. -->
+      <xs:element name="insumos" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="insumo" type="ComponenteItem" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ItemCatalogo">
+    <xs:sequence>
+      <xs:element name="uuid" type="c:Uuid"/>
+      <xs:element name="sku" type="c:Sku"/>
+      <xs:element name="tipoItem" type="TipoItem"/>
+      <xs:element name="nombre" type="c:TextoCorto"/>
+      <xs:element name="descripcion" type="c:TextoLargo" minOccurs="0"/>
+      <xs:element name="categoria" type="c:TextoCorto"/>
+      <xs:element name="precioBase" type="c:Monto"/>
+      <xs:element name="afectoIgv" type="xs:boolean" default="true"/>
+      <xs:element name="variantes" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="variante" type="Variante" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="precios" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="precioLista" type="PrecioLista" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="componentes" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="componente" type="ComponenteItem" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="datosServicio" type="DatosServicio" minOccurs="0"/>
+      <!-- RF-CAT-07: se desactiva, no se elimina. -->
+      <xs:element name="activo" type="xs:boolean" default="true"/>
+      <xs:element name="trazabilidad" type="c:Trazabilidad"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ================================================================== -->
+  <!--  SUB-DOMINIO: CAJA                    (RF-CAJA-01…10)              -->
+  <!-- ================================================================== -->
+
+  <xs:simpleType name="EstadoTurno">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="ABIERTO"/>
+      <xs:enumeration value="CERRADO"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="TipoMovimiento">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="FONDO_INICIAL"/>
+      <xs:enumeration value="VENTA"/>
+      <xs:enumeration value="DEVOLUCION"/>
+      <xs:enumeration value="INGRESO"/>
+      <xs:enumeration value="EGRESO"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- RF-CAJA-05: el arqueo ciego no muestra el esperado antes de contar. -->
+  <xs:simpleType name="ModoArqueo">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="CIEGO"/>
+      <xs:enumeration value="ASISTIDO"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- RF-CAJA-03: motivo obligatorio en ingresos y egresos. -->
+  <xs:complexType name="MovimientoCaja">
+    <xs:sequence>
+      <xs:element name="uuid" type="c:Uuid"/>
+      <xs:element name="tipo" type="TipoMovimiento"/>
+      <xs:element name="formaPago" type="c:FormaPago"/>
+      <xs:element name="monto" type="c:MontoConSigno"/>
+      <xs:element name="motivo" type="c:TextoLargo" minOccurs="0"/>
+      <xs:element name="ticketUuid" type="c:Uuid" minOccurs="0"/>
+      <xs:element name="registradoPor" type="c:TextoCorto"/>
+      <xs:element name="registradoEn" type="xs:dateTime"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- RF-CAJA-06: desglose por forma de pago al cierre. -->
+  <xs:complexType name="DesglosePago">
+    <xs:sequence>
+      <xs:element name="formaPago" type="c:FormaPago"/>
+      <xs:element name="total" type="c:Monto"/>
+      <xs:element name="operaciones" type="xs:nonNegativeInteger"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- RF-CAJA-04: esperado vs contado, y la diferencia. -->
+  <xs:complexType name="Arqueo">
+    <xs:sequence>
+      <xs:element name="modo" type="ModoArqueo"/>
+      <xs:element name="montoEsperado" type="c:Monto"/>
+      <xs:element name="montoContado" type="c:Monto"/>
+      <xs:element name="diferencia" type="c:MontoConSigno"/>
+      <xs:element name="observacion" type="c:TextoLargo" minOccurs="0"/>
+      <xs:element name="desglose" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="pago" type="DesglosePago" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="TurnoCaja">
+    <xs:sequence>
+      <xs:element name="uuid" type="c:Uuid"/>
+      <!-- Punto de emisión. Determina la serie de comprobantes (documento base §3.2). -->
+      <xs:element name="cajaId" type="c:TextoCorto"/>
+      <xs:element name="estado" type="EstadoTurno"/>
+      <xs:element name="fondoInicial" type="c:Monto"/>
+      <xs:element name="abiertoPor" type="c:TextoCorto"/>
+      <xs:element name="abiertoEn" type="xs:dateTime"/>
+      <xs:element name="cerradoPor" type="c:TextoCorto" minOccurs="0"/>
+      <xs:element name="cerradoEn" type="xs:dateTime" minOccurs="0"/>
+      <xs:element name="movimientos" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="movimiento" type="MovimientoCaja" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <!-- Presente solo cuando el turno está CERRADO. -->
+      <xs:element name="arqueo" type="Arqueo" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ================================================================== -->
+  <!--  SUB-DOMINIO: VENTA / POS             (RF-POS-01…19)               -->
+  <!-- ================================================================== -->
+
+  <xs:simpleType name="EstadoTicket">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="EN_CURSO"/>
+      <xs:enumeration value="SUSPENDIDO"/>
+      <xs:enumeration value="CERRADO"/>
+      <xs:enumeration value="ANULADO"/>
+      <xs:enumeration value="DEVUELTO_PARCIAL"/>
+      <xs:enumeration value="DEVUELTO_TOTAL"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Etapas de la cascada de precios (ADR-003). El orden es parte del contrato. -->
+  <xs:simpleType name="OrigenDescuento">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="LISTA_PRECIOS"/>
+      <xs:enumeration value="PROMOCION"/>
+      <xs:enumeration value="CUPON"/>
+      <xs:enumeration value="MANUAL"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!--
+    Un paso de la cascada de precios. Se guarda el desglose completo, no solo
+    el total, para poder auditar y explicarle al cliente cómo se llegó al precio.
+  -->
+  <xs:complexType name="PasoDescuento">
+    <xs:sequence>
+      <xs:element name="orden" type="xs:positiveInteger"/>
+      <xs:element name="origen" type="OrigenDescuento"/>
+      <xs:element name="referencia" type="c:TextoCorto" minOccurs="0"/>
+      <xs:element name="montoAntes" type="c:Monto"/>
+      <xs:element name="descuento" type="c:Monto"/>
+      <xs:element name="montoDespues" type="c:Monto"/>
+      <!-- Si es false, la cascada se detiene aquí (ADR-003). -->
+      <xs:element name="acumulable" type="xs:boolean" default="true"/>
+      <!-- MANUAL exige PIN de supervisor (ADR-001, RNF-06). -->
+      <xs:element name="autorizadoPor" type="c:TextoCorto" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="LineaTicket">
+    <xs:sequence>
+      <xs:element name="uuid" type="c:Uuid"/>
+      <xs:element name="sku" type="c:Sku"/>
+      <xs:element name="descripcion" type="c:TextoCorto"/>
+      <xs:element name="cantidad" type="xs:positiveInteger"/>
+      <xs:element name="precioLista" type="c:Monto"/>
+      <xs:element name="descuentos" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="paso" type="PasoDescuento" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="precioFinal" type="c:Monto"/>
+      <xs:element name="importe" type="c:Monto"/>
+      <!-- Reserva de agenda si la línea es un SERVICIO. La gestiona
+           Order & Booking Engine o este mismo servicio (vacío V-08). -->
+      <xs:element name="reservaUuid" type="c:Uuid" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- RF-POS-06: varias formas de pago en un mismo ticket. -->
+  <xs:complexType name="Pago">
+    <xs:sequence>
+      <xs:element name="formaPago" type="c:FormaPago"/>
+      <xs:element name="monto" type="c:Monto"/>
+      <!-- RF-POS-07: solo en efectivo. -->
+      <xs:element name="montoRecibido" type="c:Monto" minOccurs="0"/>
+      <xs:element name="vuelto" type="c:Monto" minOccurs="0"/>
+      <!-- Referencia de Payment Gateway Service en cobros digitales. -->
+      <xs:element name="referencia" type="c:TextoCorto" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- RF-POS-10 y RF-POS-11: anulación y devolución con motivo y autorizante. -->
+  <xs:complexType name="Reversion">
+    <xs:sequence>
+      <xs:element name="uuid" type="c:Uuid"/>
+      <xs:element name="motivo" type="c:TextoLargo"/>
+      <xs:element name="autorizadoPor" type="c:TextoCorto"/>
+      <xs:element name="registradoEn" type="xs:dateTime"/>
+      <!-- Vacío = devolución total. -->
+      <xs:element name="lineasDevueltas" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="lineaUuid" type="c:Uuid" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <!-- Nota de crédito emitida por E-Invoicing Service si el comprobante
+           ya estaba ACEPTADO por SUNAT (ADR-002). -->
+      <xs:element name="notaCreditoUuid" type="c:Uuid" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="Ticket">
+    <xs:sequence>
+      <xs:element name="uuid" type="c:Uuid"/>
+      <xs:element name="estado" type="EstadoTicket"/>
+      <!-- RF-CAJA-02: sin turno abierto no hay venta. -->
+      <xs:element name="turnoCajaUuid" type="c:Uuid"/>
+      <!-- RF-POS-05: la venta sin cliente es válida. -->
+      <xs:element name="clienteUuid" type="c:Uuid" minOccurs="0"/>
+      <!-- Determinado por la validación documento↔comprobante, regla interna
+           de este servicio (RF-POS-17, RF-POS-18). No es un servicio aparte. -->
+      <xs:element name="tipoComprobante" type="c:TipoComprobante"/>
+      <xs:element name="comprobanteUuid" type="c:Uuid" minOccurs="0"/>
+      <xs:element name="lineas">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="linea" type="LineaTicket" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="pagos" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="pago" type="Pago" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="subtotal" type="c:Monto"/>
+      <xs:element name="descuentoTotal" type="c:Monto"/>
+      <xs:element name="igv" type="c:Monto"/>
+      <xs:element name="total" type="c:Monto"/>
+      <xs:element name="reversion" type="Reversion" minOccurs="0"/>
+      <xs:element name="trazabilidad" type="c:Trazabilidad"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ================================================================== -->
+  <!--  ELEMENTOS RAÍZ                                                    -->
+  <!-- ================================================================== -->
+
+  <xs:element name="Cliente" type="Cliente"/>
+  <xs:element name="ItemCatalogo" type="ItemCatalogo"/>
+  <xs:element name="TurnoCaja" type="TurnoCaja"/>
+  <xs:element name="Ticket" type="Ticket"/>
+
+</xs:schema>
