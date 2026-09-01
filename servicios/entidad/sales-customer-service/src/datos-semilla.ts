@@ -63,3 +63,24 @@ export const CATALOGO_SEMILLA: ItemCatalogo[] = [
     activo: false,
   },
 ];
+
+/**
+ * Clientes de ejemplo. Cubren las tres modalidades de identificacion
+ * (RF-CRM-01), que es lo que determina el comprobante emitible.
+ */
+export const CLIENTES_SEMILLA: Record<
+  string,
+  { tipoDocumento: 'DNI' | 'RUC' | 'GENERICO'; numeroDocumento?: string }
+> = {
+  'aaaaaaaa-1111-4111-8111-111111111111': {
+    tipoDocumento: 'RUC',
+    numeroDocumento: '20512345678',
+  },
+  'bbbbbbbb-2222-4222-8222-222222222222': {
+    tipoDocumento: 'DNI',
+    numeroDocumento: '45678912',
+  },
+  'cccccccc-3333-4333-8333-333333333333': {
+    tipoDocumento: 'GENERICO',
+  },
+};
