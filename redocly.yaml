@@ -9,6 +9,11 @@ apis:
   # Contratos externos de los servicios del inventario (CLAUDE.md 4.2).
   # Cada servicio del inventario expone UN contrato. Los sub-dominios internos
   # de un servicio compuesto NO tienen contrato propio: son internos a el.
+  sales-customer@v1:
+    root: contratos/openapi/sales-customer-v1.yaml
+    x-openapi-ts:
+      output: packages/contracts/src/generado/sales-customer-v1.ts
+
   auditoria@v1:
     root: contratos/openapi/auditoria-v1.yaml
     x-openapi-ts:

@@ -1,0 +1,1270 @@
+openapi: 3.1.0
+
+info:
+  title: Sales & Customer Service
+  version: 1.0.0
+  description: |
+    **Servicio de entidad compuesto** del inventario SOA. Núcleo operativo del sistema.
+
+    Unifica cuatro sub-dominios — **Caja, Venta/POS, Cliente/CRM y Catálogo** — en un
+    solo servicio autónomo con una sola base de datos. Esa fusión es deliberada: el
+    cajero necesita los cuatro en el mismo instante del ticket de venta.
+
+    Este es el **contrato externo**: lo que otros servicios del inventario y el
+    backoffice web consumen. La comunicación interna entre sub-dominios no pasa por
+    aquí — ocurre dentro del servicio.
+
+    ### Quién consume qué
+
+    | Consumidor | Usa |
+    |---|---|
+    | `Inventory Service` | Catálogo |
+    | `Order & Booking Engine` | Catálogo de servicios, Clientes |
+    | `Omnichannel Bot Service` | Catálogo, Clientes |
+    | `Analytics & Reporting` | Cierres de caja, ventas (por eventos) |
+    | Backoffice Web | Todo |
+
+    ### Opera sin internet
+
+    Los builds Desktop y Tablet resuelven estas mismas operaciones contra SQLite local.
+    El contrato es idéntico: cambia el adaptador, no la semántica (RF-ARQ-01…03).
+
+servers:
+  - url: http://localhost:3001
+    description: Desarrollo local
+
+security:
+  - TokenServicio: []
+
+tags:
+  - name: catalogo
+    description: Productos, servicios, precios y promociones
+  - name: clientes
+    description: Ficha, búsqueda, historial y fidelización
+  - name: caja
+    description: Turnos, movimientos y arqueos
+  - name: ventas
+    description: Tickets, cobro, anulación y devolución
+  - name: sincronizacion
+    description: Push y pull entre terminal y nube
+
+paths:
+  # ══════════════════════════════════════════════════════════════════
+  #  CATÁLOGO
+  # ══════════════════════════════════════════════════════════════════
+
+  /catalogo/items:
+    get:
+      operationId: BuscarItemsCatalogo
+      tags: [catalogo]
+      summary: Busca productos y servicios por texto, categoría o tipo
+      description: |
+        Búsqueda alfanumérica del cajero durante la venta (RF-POS-01).
+
+        **Debe responder en menos de 300ms sobre 50.000 items** (RNF-03, RNF-15). En el
+        despliegue local eso exige FTS5 sobre SQLCipher — pendiente de validar (V-05).
+      parameters:
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - name: q
+          in: query
+          description: Texto libre. Busca en nombre, SKU y categoría.
+          schema: { type: string, maxLength: 120 }
+        - name: tipoItem
+          in: query
+          schema: { $ref: '#/components/schemas/TipoItem' }
+        - name: categoria
+          in: query
+          schema: { type: string }
+        - name: soloActivos
+          in: query
+          schema: { type: boolean, default: true }
+        - $ref: '_comunes-v1.yaml#/components/parameters/Pagina'
+        - $ref: '_comunes-v1.yaml#/components/parameters/Limite'
+      responses:
+        '200':
+          description: Items encontrados.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [exito, datos, error, meta]
+                properties:
+                  exito: { type: boolean, const: true }
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/ItemCatalogo' }
+                  error: { type: 'null' }
+                  meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+        '400': { $ref: '_comunes-v1.yaml#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+
+    post:
+      operationId: RegistrarItemCatalogo
+      tags: [catalogo]
+      summary: Da de alta un producto o servicio
+      description: Solo rol ADMINISTRADOR (ADR-001).
+      parameters:
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - $ref: '_comunes-v1.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NuevoItemCatalogo' }
+      responses:
+        '201':
+          description: Item creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaItem' }
+        '400': { $ref: '_comunes-v1.yaml#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '403': { $ref: '_comunes-v1.yaml#/components/responses/Prohibido' }
+        '409': { $ref: '_comunes-v1.yaml#/components/responses/Conflicto' }
+
+  /catalogo/items/{sku}:
+    get:
+      operationId: ConsultarItemCatalogo
+      tags: [catalogo]
+      summary: Devuelve un item con sus variantes, precios y datos de servicio
+      description: >
+        Es la operación que consumen `Inventory Service`, `Order & Booking Engine` y
+        `Omnichannel Bot Service` (documento base §5.1).
+      parameters:
+        - name: sku
+          in: path
+          required: true
+          schema: { $ref: '_comunes-v1.yaml#/components/schemas/Sku' }
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Item encontrado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaItem' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '404': { $ref: '_comunes-v1.yaml#/components/responses/NoEncontrado' }
+
+  /catalogo/precios/calcular:
+    post:
+      operationId: CalcularPrecio
+      tags: [catalogo]
+      summary: Aplica la cascada de precios y devuelve el desglose completo
+      description: |
+        Ejecuta la cascada de [ADR-003](../../docs/adr/003-precedencia-precios.md):
+
+        `lista del cliente → promoción → cupón → descuento manual`
+
+        Devuelve **cada paso**, no solo el total. El desglose se guarda con el ticket
+        para poder auditarlo y explicárselo al cliente cuando pregunta.
+
+        Si una etapa marca `acumulable: false`, la cascada se detiene ahí.
+      parameters:
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CalcularPrecioRequest' }
+      responses:
+        '200':
+          description: Precio calculado con su desglose.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exito: { type: boolean, const: true }
+                  datos: { $ref: '#/components/schemas/PrecioCalculado' }
+                  error: { type: 'null' }
+                  meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+        '400': { $ref: '_comunes-v1.yaml#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '422': { $ref: '_comunes-v1.yaml#/components/responses/ReglaNegocio' }
+
+  # ══════════════════════════════════════════════════════════════════
+  #  CLIENTES
+  # ══════════════════════════════════════════════════════════════════
+
+  /clientes:
+    get:
+      operationId: BuscarClientes
+      tags: [clientes]
+      summary: Busca clientes por nombre, documento, teléfono o correo
+      description: >
+        Búsqueda en tiempo real durante la venta (RF-CRM-03).
+        **Menos de 300ms sobre 100.000 registros** (RNF-03, RNF-15).
+      parameters:
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 120 }
+        - $ref: '_comunes-v1.yaml#/components/parameters/Pagina'
+        - $ref: '_comunes-v1.yaml#/components/parameters/Limite'
+      responses:
+        '200':
+          description: Clientes encontrados.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exito: { type: boolean, const: true }
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/Cliente' }
+                  error: { type: 'null' }
+                  meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+        '400': { $ref: '_comunes-v1.yaml#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+
+    post:
+      operationId: RegistrarCliente
+      tags: [clientes]
+      summary: Da de alta un cliente bajo una de las tres modalidades
+      description: |
+        Alta rápida sin abandonar el ticket (RF-POS-04, RF-CRM-01).
+
+        Tres modalidades: **DNI** (persona natural), **RUC** (persona jurídica) o
+        **GENERICO** (sin documento tributario, solo nombre).
+
+        El formato se valida antes de asociar (RF-CRM-02): DNI de 8 dígitos, RUC de 11
+        con prefijo 10/15/17/20.
+      parameters:
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - $ref: '_comunes-v1.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NuevoCliente' }
+      responses:
+        '201':
+          description: Cliente creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaCliente' }
+        '400': { $ref: '_comunes-v1.yaml#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '409': { $ref: '_comunes-v1.yaml#/components/responses/Conflicto' }
+        '422': { $ref: '_comunes-v1.yaml#/components/responses/ReglaNegocio' }
+
+  /clientes/{uuid}:
+    get:
+      operationId: ConsultarCliente
+      tags: [clientes]
+      summary: Devuelve la ficha del cliente
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Cliente encontrado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaCliente' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '404': { $ref: '_comunes-v1.yaml#/components/responses/NoEncontrado' }
+
+    patch:
+      operationId: ActualizarCliente
+      tags: [clientes]
+      summary: Modifica o desactiva un cliente
+      description: >
+        Los clientes se **desactivan**, nunca se eliminan: su historial de compras debe
+        preservarse (RF-CRM-07, RNF-08).
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                razonSocial: { type: string, maxLength: 120 }
+                nombreComercial: { type: string, maxLength: 120 }
+                contacto: { $ref: '#/components/schemas/Contacto' }
+                segmento: { $ref: '#/components/schemas/Segmento' }
+                listaPrecios: { type: string }
+                activo: { type: boolean }
+      responses:
+        '200':
+          description: Cliente actualizado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaCliente' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '404': { $ref: '_comunes-v1.yaml#/components/responses/NoEncontrado' }
+
+  # ══════════════════════════════════════════════════════════════════
+  #  CAJA
+  # ══════════════════════════════════════════════════════════════════
+
+  /caja/turnos:
+    post:
+      operationId: AbrirTurno
+      tags: [caja]
+      summary: Abre un turno de caja con fondo inicial
+      description: |
+        **Sin turno abierto no se puede registrar ninguna venta** (RF-CAJA-02).
+
+        Requiere autorización de supervisor: el `codigoAutorizacion` se obtiene canjeando
+        el PIN (ADR-001, RNF-06). Queda registrado quién autorizó, no solo quién opera.
+      parameters:
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - $ref: '_comunes-v1.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cajaId, fondoInicial, codigoAutorizacion]
+              properties:
+                cajaId:
+                  type: string
+                  description: Punto de emisión. Determina la serie de comprobantes.
+                  examples: ['CAJA-01']
+                fondoInicial: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+                codigoAutorizacion:
+                  type: string
+                  description: Autorización de supervisor, de un solo uso.
+      responses:
+        '201':
+          description: Turno abierto.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaTurno' }
+        '400': { $ref: '_comunes-v1.yaml#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '403': { $ref: '_comunes-v1.yaml#/components/responses/Prohibido' }
+        '409':
+          description: Ya existe un turno abierto para esta caja.
+          content:
+            application/json:
+              schema: { $ref: '_comunes-v1.yaml#/components/schemas/RespuestaError' }
+
+  /caja/turnos/actual:
+    get:
+      operationId: ConsultarTurnoActual
+      tags: [caja]
+      summary: Devuelve el turno abierto con su monto en caja al momento
+      description: >
+        Alimenta el visualizador dinámico del monto actual (RF-CAJA-09).
+      parameters:
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - name: cajaId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Turno abierto.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaTurno' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '404':
+          description: No hay turno abierto para esa caja.
+          content:
+            application/json:
+              schema: { $ref: '_comunes-v1.yaml#/components/schemas/RespuestaError' }
+
+  /caja/turnos/{uuid}/movimientos:
+    post:
+      operationId: RegistrarMovimientoCaja
+      tags: [caja]
+      summary: Registra un ingreso o egreso de efectivo
+      description: >
+        El motivo es **obligatorio** en ingresos y egresos manuales (RF-CAJA-03).
+        Los movimientos son append-only: no se editan ni se borran (RNF-08).
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - $ref: '_comunes-v1.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tipo, formaPago, monto, motivo]
+              properties:
+                tipo:
+                  type: string
+                  enum: [INGRESO, EGRESO]
+                formaPago: { $ref: '_comunes-v1.yaml#/components/schemas/FormaPago' }
+                monto: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+                motivo: { type: string, minLength: 1, maxLength: 1000 }
+      responses:
+        '201':
+          description: Movimiento registrado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exito: { type: boolean, const: true }
+                  datos: { $ref: '#/components/schemas/MovimientoCaja' }
+                  error: { type: 'null' }
+                  meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+        '400': { $ref: '_comunes-v1.yaml#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '404': { $ref: '_comunes-v1.yaml#/components/responses/NoEncontrado' }
+        '409': { $ref: '_comunes-v1.yaml#/components/responses/Conflicto' }
+
+  /caja/turnos/{uuid}/cierre:
+    post:
+      operationId: CerrarTurno
+      tags: [caja]
+      summary: Cierra el turno con arqueo
+      description: |
+        Calcula el balance esperado —`fondo inicial + ventas en efectivo + ingresos −
+        egresos`— y lo compara contra el conteo físico (RF-CAJA-04).
+
+        En modo **CIEGO** el operador no ve el esperado antes de contar; en **ASISTIDO**
+        sí (RF-CAJA-05). La respuesta incluye el desglose por forma de pago (RF-CAJA-06).
+
+        Requiere autorización de supervisor.
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - $ref: '_comunes-v1.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [modo, montoContado, codigoAutorizacion]
+              properties:
+                modo:
+                  type: string
+                  enum: [CIEGO, ASISTIDO]
+                montoContado: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+                observacion: { type: string, maxLength: 1000 }
+                codigoAutorizacion: { type: string }
+      responses:
+        '200':
+          description: Turno cerrado con su arqueo.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exito: { type: boolean, const: true }
+                  datos: { $ref: '#/components/schemas/Arqueo' }
+                  error: { type: 'null' }
+                  meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+        '400': { $ref: '_comunes-v1.yaml#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '403': { $ref: '_comunes-v1.yaml#/components/responses/Prohibido' }
+        '409': { $ref: '_comunes-v1.yaml#/components/responses/Conflicto' }
+
+  /caja/cierres:
+    get:
+      operationId: ConsultarCierres
+      tags: [caja]
+      summary: Historial de cierres de caja
+      description: >
+        Solo lectura, para auditoría (RF-CAJA-10). Lo consume
+        `Analytics & Reporting Service` para el reporte de desviaciones de efectivo.
+      parameters:
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - name: desde
+          in: query
+          schema: { type: string, format: date }
+        - name: hasta
+          in: query
+          schema: { type: string, format: date }
+        - $ref: '_comunes-v1.yaml#/components/parameters/Pagina'
+        - $ref: '_comunes-v1.yaml#/components/parameters/Limite'
+      responses:
+        '200':
+          description: Cierres encontrados.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exito: { type: boolean, const: true }
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/Arqueo' }
+                  error: { type: 'null' }
+                  meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+
+  # ══════════════════════════════════════════════════════════════════
+  #  VENTAS
+  # ══════════════════════════════════════════════════════════════════
+
+  /ventas/tickets:
+    post:
+      operationId: CrearTicket
+      tags: [ventas]
+      summary: Abre un ticket de venta
+      description: >
+        Exige un turno de caja abierto (RF-CAJA-02). El ticket nace en estado `EN_CURSO`
+        y **se persiste de inmediato**, no solo al cerrar: eso es lo que permite
+        recuperarlo tras un corte de energía (RF-POS-09, RNF-10).
+      parameters:
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - $ref: '_comunes-v1.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [turnoCajaUuid]
+              properties:
+                turnoCajaUuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+                clienteUuid:
+                  $ref: '_comunes-v1.yaml#/components/schemas/Uuid'
+      responses:
+        '201':
+          description: Ticket creado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaTicket' }
+        '400': { $ref: '_comunes-v1.yaml#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '409':
+          description: No hay turno de caja abierto.
+          content:
+            application/json:
+              schema: { $ref: '_comunes-v1.yaml#/components/schemas/RespuestaError' }
+
+  /ventas/tickets/{uuid}:
+    get:
+      operationId: ConsultarTicket
+      tags: [ventas]
+      summary: Devuelve el ticket con sus líneas, descuentos y pagos
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Ticket encontrado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaTicket' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '404': { $ref: '_comunes-v1.yaml#/components/responses/NoEncontrado' }
+
+  /ventas/tickets/{uuid}/lineas:
+    post:
+      operationId: AgregarLineaTicket
+      tags: [ventas]
+      summary: Agrega un item al ticket
+      description: >
+        Consulta disponibilidad a `Inventory Service` antes de agregar (ADR-006) y aplica
+        la cascada de precios. Cada modificación se persiste al instante (RF-POS-09).
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - $ref: '_comunes-v1.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sku, cantidad]
+              properties:
+                sku: { $ref: '_comunes-v1.yaml#/components/schemas/Sku' }
+                cantidad: { type: integer, minimum: 1 }
+                cupon:
+                  type: string
+                  description: Código de cupón a aplicar sobre esta línea.
+      responses:
+        '201':
+          description: Línea agregada. Devuelve el ticket recalculado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaTicket' }
+        '400': { $ref: '_comunes-v1.yaml#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '404': { $ref: '_comunes-v1.yaml#/components/responses/NoEncontrado' }
+        '422': { $ref: '_comunes-v1.yaml#/components/responses/ReglaNegocio' }
+
+  /ventas/tickets/{uuid}/comprobante/verificar:
+    post:
+      operationId: VerificarComprobante
+      tags: [ventas]
+      summary: Verifica si el comprobante es emitible para el cliente asociado
+      description: |
+        **Regla de negocio interna del servicio**, no un servicio aparte (CLAUDE.md §4.4):
+
+        | Documento del cliente | Comprobante habilitado |
+        |---|---|
+        | DNI (8 dígitos) | Boleta de venta |
+        | RUC (11 dígitos) | Factura |
+        | Genérico / sin cliente | Nota de venta |
+
+        Se verifica **antes** de cerrar el ticket (RF-POS-18). Emitir de todos modos
+        produciría un comprobante que SUNAT rechazaría, y la responsabilidad legal es
+        del negocio.
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tipoComprobante]
+              properties:
+                tipoComprobante: { $ref: '_comunes-v1.yaml#/components/schemas/TipoComprobante' }
+      responses:
+        '200':
+          description: Veredicto. Un comprobante incompatible **no** es error HTTP.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exito: { type: boolean, const: true }
+                  datos:
+                    type: object
+                    required: [compatible]
+                    properties:
+                      compatible: { type: boolean }
+                      motivo:
+                        type: string
+                        examples: ['Un cliente identificado con RUC requiere Factura, no Boleta.']
+                      sugerido: { $ref: '_comunes-v1.yaml#/components/schemas/TipoComprobante' }
+                      permitidos:
+                        type: array
+                        items: { $ref: '_comunes-v1.yaml#/components/schemas/TipoComprobante' }
+                  error: { type: 'null' }
+                  meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '404': { $ref: '_comunes-v1.yaml#/components/responses/NoEncontrado' }
+
+  /ventas/tickets/{uuid}/cierre:
+    post:
+      operationId: CerrarVenta
+      tags: [ventas]
+      summary: Cobra el ticket y emite el comprobante
+      description: |
+        Cobra con una o varias formas de pago combinadas (RF-POS-06) y calcula el vuelto
+        en efectivo (RF-POS-07).
+
+        **Bloquea el cierre si el comprobante es incompatible** con el identificador del
+        cliente (RF-POS-18).
+
+        Al cerrar: emite el comprobante **localmente** con el correlativo de la serie de
+        esa caja, lo marca `PENDIENTE_ENVIO` y lo encola hacia `E-Invoicing Service`.
+        El cliente se lleva su comprobante sin esperar a SUNAT.
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - $ref: '_comunes-v1.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tipoComprobante, pagos]
+              properties:
+                tipoComprobante: { $ref: '_comunes-v1.yaml#/components/schemas/TipoComprobante' }
+                pagos:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/Pago' }
+      responses:
+        '200':
+          description: Venta cerrada y comprobante emitido.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exito: { type: boolean, const: true }
+                  datos:
+                    type: object
+                    properties:
+                      ticket: { $ref: '#/components/schemas/Ticket' }
+                      comprobante: { $ref: '#/components/schemas/ComprobanteEmitido' }
+                      vuelto: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+                  error: { type: 'null' }
+                  meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+        '400': { $ref: '_comunes-v1.yaml#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '409': { $ref: '_comunes-v1.yaml#/components/responses/Conflicto' }
+        '422':
+          description: Comprobante incompatible con el documento del cliente (RF-POS-18).
+          content:
+            application/json:
+              schema: { $ref: '_comunes-v1.yaml#/components/schemas/RespuestaError' }
+
+  /ventas/tickets/{uuid}/reversion:
+    post:
+      operationId: RevertirVenta
+      tags: [ventas]
+      summary: Anula o devuelve una venta cerrada
+      description: |
+        **El estado tributario del comprobante decide qué reversión es legal**
+        ([ADR-002](../../docs/adr/002-anulacion-nota-credito.md)):
+
+        | Estado del comprobante | Reversión |
+        |---|---|
+        | `PENDIENTE_ENVIO` | Anulación local directa |
+        | `ACEPTADO` por SUNAT | **Nota de Crédito** (tipo 07) — no se puede anular |
+        | `RECHAZADO` | Corregir y reemitir |
+
+        El cliente de esta API **no elige**: envía la intención y el servicio aplica lo
+        que corresponde. `lineasDevueltas` vacío significa devolución total.
+
+        Revierte también caja y stock. Requiere autorización de supervisor (RF-POS-10).
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - $ref: '_comunes-v1.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [motivo, codigoAutorizacion]
+              properties:
+                motivo: { type: string, minLength: 1, maxLength: 1000 }
+                codigoAutorizacion: { type: string }
+                lineasDevueltas:
+                  type: array
+                  description: Vacío o ausente = devolución total.
+                  items: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+      responses:
+        '200':
+          description: Venta revertida.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exito: { type: boolean, const: true }
+                  datos:
+                    type: object
+                    properties:
+                      ticket: { $ref: '#/components/schemas/Ticket' }
+                      tipoReversion:
+                        type: string
+                        enum: [ANULACION, NOTA_CREDITO]
+                        description: Lo decide el estado tributario, no el llamante.
+                      notaCredito: { $ref: '#/components/schemas/ComprobanteEmitido' }
+                  error: { type: 'null' }
+                  meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+        '403': { $ref: '_comunes-v1.yaml#/components/responses/Prohibido' }
+        '404': { $ref: '_comunes-v1.yaml#/components/responses/NoEncontrado' }
+        '422': { $ref: '_comunes-v1.yaml#/components/responses/ReglaNegocio' }
+
+  # ══════════════════════════════════════════════════════════════════
+  #  SINCRONIZACIÓN
+  # ══════════════════════════════════════════════════════════════════
+
+  /sync/eventos:
+    post:
+      operationId: EmpujarEventos
+      tags: [sincronizacion]
+      summary: Empuja el lote de eventos pendientes del terminal
+      description: |
+        El terminal drena su `sync_outbox` al recuperar conexión (RF-SYNC-02).
+
+        **Idempotente por UUIDv4**: reenviar un evento ya procesado no duplica la venta,
+        el movimiento de caja ni el comprobante (RF-SYNC-07, RNF-09). Es lo que hace
+        seguro el reintento automático con backoff.
+      parameters:
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - $ref: '_comunes-v1.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [terminalId, eventos]
+              properties:
+                terminalId: { type: string }
+                eventos:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items: { $ref: '#/components/schemas/EventoSync' }
+      responses:
+        '202':
+          description: Lote aceptado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exito: { type: boolean, const: true }
+                  datos:
+                    type: object
+                    properties:
+                      aceptados: { type: integer }
+                      duplicados:
+                        type: integer
+                        description: Ya procesados antes. No se aplican de nuevo.
+                      rechazados:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            uuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+                            motivo: { type: string }
+                  error: { type: 'null' }
+                  meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+        '400': { $ref: '_comunes-v1.yaml#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+
+  /sync/cambios:
+    get:
+      operationId: DescargarCambios
+      tags: [sincronizacion]
+      summary: Descarga los cambios de catálogo y precios desde la nube
+      description: >
+        Pull del terminal (RF-SYNC-03). **En estos datos la nube manda**: lo que se
+        edita en el backoffice web baja al terminal (documento base §2.5).
+      parameters:
+        - $ref: '_comunes-v1.yaml#/components/parameters/CorrelationId'
+        - name: desde
+          in: query
+          required: true
+          description: Marca de la última sincronización exitosa.
+          schema: { type: string, format: date-time }
+        - name: terminalId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Cambios desde la marca indicada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exito: { type: boolean, const: true }
+                  datos:
+                    type: object
+                    properties:
+                      hasta: { type: string, format: date-time }
+                      catalogo:
+                        type: array
+                        items: { $ref: '#/components/schemas/ItemCatalogo' }
+                      clientes:
+                        type: array
+                        items: { $ref: '#/components/schemas/Cliente' }
+                  error: { type: 'null' }
+                  meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+        '400': { $ref: '_comunes-v1.yaml#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '_comunes-v1.yaml#/components/responses/NoAutorizado' }
+
+components:
+  securitySchemes:
+    TokenServicio:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ── Catálogo ────────────────────────────────────────────────────
+    TipoItem:
+      type: string
+      enum: [PRODUCTO, SERVICIO, COMBO]
+
+    Variante:
+      type: object
+      required: [sku, atributo, valor]
+      properties:
+        sku: { $ref: '_comunes-v1.yaml#/components/schemas/Sku' }
+        atributo: { type: string, examples: ['talla'] }
+        valor: { type: string, examples: ['M'] }
+        precioDiferencial: { $ref: '_comunes-v1.yaml#/components/schemas/MontoConSigno' }
+
+    PrecioLista:
+      type: object
+      required: [lista, precio, vigenteDesde]
+      properties:
+        lista: { type: string, examples: ['VIP'] }
+        precio: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        vigenteDesde: { type: string, format: date }
+        vigenteHasta: { type: string, format: date }
+
+    DatosServicio:
+      type: object
+      description: Presente solo cuando tipoItem es SERVICIO.
+      required: [duracionMinutos]
+      properties:
+        duracionMinutos: { type: integer, minimum: 1 }
+        especialistas:
+          type: array
+          items: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        recursos:
+          type: array
+          description: Recursos físicos limitados — sala, silla, equipo.
+          items: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+
+    ItemCatalogo:
+      type: object
+      required: [uuid, sku, tipoItem, nombre, categoria, precioBase, activo]
+      properties:
+        uuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        sku: { $ref: '_comunes-v1.yaml#/components/schemas/Sku' }
+        tipoItem: { $ref: '#/components/schemas/TipoItem' }
+        nombre: { type: string, maxLength: 120 }
+        descripcion: { type: string, maxLength: 1000 }
+        categoria: { type: string, maxLength: 120 }
+        precioBase: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        afectoIgv: { type: boolean, default: true }
+        variantes:
+          type: array
+          items: { $ref: '#/components/schemas/Variante' }
+        precios:
+          type: array
+          items: { $ref: '#/components/schemas/PrecioLista' }
+        datosServicio: { $ref: '#/components/schemas/DatosServicio' }
+        activo: { type: boolean }
+        trazabilidad: { $ref: '_comunes-v1.yaml#/components/schemas/Trazabilidad' }
+
+    NuevoItemCatalogo:
+      type: object
+      required: [sku, tipoItem, nombre, categoria, precioBase]
+      properties:
+        sku: { $ref: '_comunes-v1.yaml#/components/schemas/Sku' }
+        tipoItem: { $ref: '#/components/schemas/TipoItem' }
+        nombre: { type: string, minLength: 1, maxLength: 120 }
+        descripcion: { type: string, maxLength: 1000 }
+        categoria: { type: string, minLength: 1, maxLength: 120 }
+        precioBase: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        afectoIgv: { type: boolean, default: true }
+        variantes:
+          type: array
+          items: { $ref: '#/components/schemas/Variante' }
+        datosServicio: { $ref: '#/components/schemas/DatosServicio' }
+
+    RespuestaItem:
+      type: object
+      required: [exito, datos, error, meta]
+      properties:
+        exito: { type: boolean, const: true }
+        datos: { $ref: '#/components/schemas/ItemCatalogo' }
+        error: { type: 'null' }
+        meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+
+    # ── Cascada de precios (ADR-003) ────────────────────────────────
+    OrigenDescuento:
+      type: string
+      description: Etapas de la cascada, en orden de aplicación.
+      enum: [LISTA_PRECIOS, PROMOCION, CUPON, MANUAL]
+
+    PasoDescuento:
+      type: object
+      required: [orden, origen, montoAntes, descuento, montoDespues, acumulable]
+      properties:
+        orden: { type: integer, minimum: 1 }
+        origen: { $ref: '#/components/schemas/OrigenDescuento' }
+        referencia:
+          type: string
+          description: Identificador de la promoción o cupón aplicado.
+        montoAntes: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        descuento: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        montoDespues: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        acumulable:
+          type: boolean
+          description: Si es false, la cascada se detiene en este paso.
+        autorizadoPor:
+          type: string
+          description: Solo en MANUAL. Supervisor que autorizó (ADR-001).
+
+    CalcularPrecioRequest:
+      type: object
+      required: [sku, cantidad]
+      properties:
+        sku: { $ref: '_comunes-v1.yaml#/components/schemas/Sku' }
+        cantidad: { type: integer, minimum: 1 }
+        clienteUuid:
+          $ref: '_comunes-v1.yaml#/components/schemas/Uuid'
+        cupon: { type: string }
+        descuentoManual:
+          type: object
+          description: Requiere autorización de supervisor.
+          properties:
+            monto: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+            codigoAutorizacion: { type: string }
+
+    PrecioCalculado:
+      type: object
+      required: [sku, cantidad, precioLista, precioFinal, importe, pasos]
+      properties:
+        sku: { $ref: '_comunes-v1.yaml#/components/schemas/Sku' }
+        cantidad: { type: integer }
+        precioLista: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        precioFinal: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        importe: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        pasos:
+          type: array
+          description: La cascada completa, paso a paso. Auditable y explicable.
+          items: { $ref: '#/components/schemas/PasoDescuento' }
+
+    # ── Clientes ────────────────────────────────────────────────────
+    Segmento:
+      type: string
+      enum: [REGULAR, VIP, FRECUENTE, MAYORISTA]
+
+    Contacto:
+      type: object
+      properties:
+        telefono: { type: string, maxLength: 120 }
+        correo: { type: string, format: email, maxLength: 120 }
+        direccion: { type: string, maxLength: 1000 }
+
+    Fidelizacion:
+      type: object
+      properties:
+        puntosAcumulados: { type: integer, minimum: 0 }
+        puntosRedimidos: { type: integer, minimum: 0 }
+        ultimaActividad: { type: string, format: date-time }
+
+    Cliente:
+      type: object
+      required: [uuid, tipoDocumento, razonSocial, segmento, activo]
+      properties:
+        uuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        tipoDocumento: { $ref: '_comunes-v1.yaml#/components/schemas/TipoDocumento' }
+        numeroDocumento:
+          type: string
+          description: Ausente cuando tipoDocumento es GENERICO.
+        codigoInterno:
+          type: string
+          description: Identificador propio para clientes sin documento tributario.
+        razonSocial: { type: string, maxLength: 120 }
+        nombreComercial: { type: string, maxLength: 120 }
+        contacto: { $ref: '#/components/schemas/Contacto' }
+        segmento: { $ref: '#/components/schemas/Segmento' }
+        listaPrecios: { type: string }
+        fidelizacion: { $ref: '#/components/schemas/Fidelizacion' }
+        activo: { type: boolean }
+        trazabilidad: { $ref: '_comunes-v1.yaml#/components/schemas/Trazabilidad' }
+
+    NuevoCliente:
+      type: object
+      required: [tipoDocumento, razonSocial]
+      properties:
+        tipoDocumento: { $ref: '_comunes-v1.yaml#/components/schemas/TipoDocumento' }
+        numeroDocumento:
+          type: string
+          description: Obligatorio salvo cuando tipoDocumento es GENERICO.
+        razonSocial: { type: string, minLength: 1, maxLength: 120 }
+        nombreComercial: { type: string, maxLength: 120 }
+        contacto: { $ref: '#/components/schemas/Contacto' }
+        segmento: { $ref: '#/components/schemas/Segmento' }
+
+    RespuestaCliente:
+      type: object
+      required: [exito, datos, error, meta]
+      properties:
+        exito: { type: boolean, const: true }
+        datos: { $ref: '#/components/schemas/Cliente' }
+        error: { type: 'null' }
+        meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+
+    # ── Caja ────────────────────────────────────────────────────────
+    MovimientoCaja:
+      type: object
+      required: [uuid, tipo, formaPago, monto, registradoPor, registradoEn]
+      properties:
+        uuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        tipo:
+          type: string
+          enum: [FONDO_INICIAL, VENTA, DEVOLUCION, INGRESO, EGRESO]
+        formaPago: { $ref: '_comunes-v1.yaml#/components/schemas/FormaPago' }
+        monto: { $ref: '_comunes-v1.yaml#/components/schemas/MontoConSigno' }
+        motivo: { type: string, maxLength: 1000 }
+        ticketUuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        registradoPor: { type: string }
+        registradoEn: { type: string, format: date-time }
+
+    DesglosePago:
+      type: object
+      required: [formaPago, total, operaciones]
+      properties:
+        formaPago: { $ref: '_comunes-v1.yaml#/components/schemas/FormaPago' }
+        total: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        operaciones: { type: integer, minimum: 0 }
+
+    TurnoCaja:
+      type: object
+      required: [uuid, cajaId, estado, fondoInicial, abiertoPor, abiertoEn]
+      properties:
+        uuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        cajaId: { type: string }
+        estado:
+          type: string
+          enum: [ABIERTO, CERRADO]
+        fondoInicial: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        montoActual:
+          $ref: '_comunes-v1.yaml#/components/schemas/Monto'
+        abiertoPor: { type: string }
+        abiertoEn: { type: string, format: date-time }
+        cerradoPor: { type: string }
+        cerradoEn: { type: string, format: date-time }
+        movimientos:
+          type: array
+          items: { $ref: '#/components/schemas/MovimientoCaja' }
+
+    Arqueo:
+      type: object
+      required: [turnoUuid, modo, montoEsperado, montoContado, diferencia]
+      properties:
+        turnoUuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        modo:
+          type: string
+          enum: [CIEGO, ASISTIDO]
+        montoEsperado: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        montoContado: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        diferencia: { $ref: '_comunes-v1.yaml#/components/schemas/MontoConSigno' }
+        observacion: { type: string, maxLength: 1000 }
+        desglose:
+          type: array
+          items: { $ref: '#/components/schemas/DesglosePago' }
+
+    RespuestaTurno:
+      type: object
+      required: [exito, datos, error, meta]
+      properties:
+        exito: { type: boolean, const: true }
+        datos: { $ref: '#/components/schemas/TurnoCaja' }
+        error: { type: 'null' }
+        meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+
+    # ── Ventas ──────────────────────────────────────────────────────
+    LineaTicket:
+      type: object
+      required: [uuid, sku, descripcion, cantidad, precioLista, precioFinal, importe]
+      properties:
+        uuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        sku: { $ref: '_comunes-v1.yaml#/components/schemas/Sku' }
+        descripcion: { type: string }
+        cantidad: { type: integer, minimum: 1 }
+        precioLista: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        descuentos:
+          type: array
+          items: { $ref: '#/components/schemas/PasoDescuento' }
+        precioFinal: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        importe: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        reservaUuid:
+          $ref: '_comunes-v1.yaml#/components/schemas/Uuid'
+
+    Pago:
+      type: object
+      required: [formaPago, monto]
+      properties:
+        formaPago: { $ref: '_comunes-v1.yaml#/components/schemas/FormaPago' }
+        monto: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        montoRecibido:
+          $ref: '_comunes-v1.yaml#/components/schemas/Monto'
+        referencia:
+          type: string
+          description: Referencia de Payment Gateway Service en cobros digitales.
+
+    Ticket:
+      type: object
+      required: [uuid, estado, turnoCajaUuid, tipoComprobante, lineas, subtotal, igv, total]
+      properties:
+        uuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        estado:
+          type: string
+          enum: [EN_CURSO, SUSPENDIDO, CERRADO, ANULADO, DEVUELTO_PARCIAL, DEVUELTO_TOTAL]
+        turnoCajaUuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        clienteUuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        tipoComprobante: { $ref: '_comunes-v1.yaml#/components/schemas/TipoComprobante' }
+        comprobanteUuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        lineas:
+          type: array
+          items: { $ref: '#/components/schemas/LineaTicket' }
+        pagos:
+          type: array
+          items: { $ref: '#/components/schemas/Pago' }
+        subtotal: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        descuentoTotal: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        igv: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        total: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+        trazabilidad: { $ref: '_comunes-v1.yaml#/components/schemas/Trazabilidad' }
+
+    ComprobanteEmitido:
+      type: object
+      required: [uuid, tipoComprobante, serie, correlativo, estadoTributario]
+      properties:
+        uuid: { $ref: '_comunes-v1.yaml#/components/schemas/Uuid' }
+        tipoComprobante: { $ref: '_comunes-v1.yaml#/components/schemas/TipoComprobante' }
+        serie: { $ref: '_comunes-v1.yaml#/components/schemas/Serie' }
+        correlativo: { type: integer, minimum: 1 }
+        fechaEmision: { type: string, format: date }
+        estadoTributario: { $ref: '_comunes-v1.yaml#/components/schemas/EstadoTributario' }
+        total: { $ref: '_comunes-v1.yaml#/components/schemas/Monto' }
+
+    RespuestaTicket:
+      type: object
+      required: [exito, datos, error, meta]
+      properties:
+        exito: { type: boolean, const: true }
+        datos: { $ref: '#/components/schemas/Ticket' }
+        error: { type: 'null' }
+        meta: { $ref: '_comunes-v1.yaml#/components/schemas/Meta' }
+
+    # ── Sincronización ──────────────────────────────────────────────
+    EventoSync:
+      type: object
+      required: [uuid, tipo, ocurridoEn, carga]
+      properties:
+        uuid:
+          allOf:
+            - $ref: '_comunes-v1.yaml#/components/schemas/Uuid'
+          description: Clave de idempotencia del evento (RF-SYNC-01).
+        tipo:
+          type: string
+          description: Nombre del evento en pasado.
+          examples: ['VentaRegistrada', 'CajaCerrada', 'ClienteRegistrado']
+        ocurridoEn: { type: string, format: date-time }
+        carga:
+          type: object
+          description: Contenido del evento según su tipo.
+          additionalProperties: true
