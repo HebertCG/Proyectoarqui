@@ -1,11 +1,20 @@
 packages:
+  # Paquetes compartidos: service-kit, xml-kit, contracts
   - 'packages/*'
+
+  # Los 8 servicios del inventario canónico (CLAUDE.md §4.2).
+  # sales-customer-service vive aquí: es un servicio del inventario,
+  # no un "terminal" aparte.
   - 'servicios/entidad/*'
   - 'servicios/tarea/*'
   - 'servicios/utilidad/*'
+
+  # Infraestructura SOA
   - 'esb'
   - 'registro'
-  - 'terminal-pos'
+
+  # Pruebas de riesgo técnico
   - 'spikes/*'
+
 allowBuilds:
   esbuild: true
