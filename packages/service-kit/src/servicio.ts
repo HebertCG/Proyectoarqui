@@ -164,6 +164,30 @@ export async function crearServicio(
       );
     }
 
+    // Fastify anota el estado en sus propios errores (cuerpo mal formado,
+    // ruta no permitida...). Devolver 500 a ciegas convertiria un error del
+    // llamante en un fallo aparente del servicio, y quien depura buscaria
+    // en el sitio equivocado.
+    const estadoFramework = (error as { statusCode?: number }).statusCode;
+    const esErrorDelLlamante =
+      typeof estadoFramework === 'number' && estadoFramework >= 400 && estadoFramework < 500;
+
+    if (esErrorDelLlamante) {
+      peticion.log.warn(
+        { err: error, correlationId: meta.correlationId },
+        'Peticion invalida',
+      );
+      return respuesta.code(estadoFramework).send(
+        fallo(
+          {
+            codigo: (error as { code?: string }).code ?? 'SOLICITUD_INVALIDA',
+            mensaje: (error as Error).message,
+          },
+          meta,
+        ),
+      );
+    }
+
     peticion.log.error({ err: error, correlationId: meta.correlationId }, 'Error no controlado');
     return respuesta.code(500).send(
       fallo(

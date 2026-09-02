@@ -177,17 +177,41 @@ tools/              Generador de servicios del inventario
 
 ## Estado
 
+**Nivel N1 operativo end-to-end.** 356 pruebas en verde.
+
+| Componente | Estado | Pruebas |
+| :--- | :--- | :--- |
+| `Sales & Customer Service` | Catálogo · Caja · Venta · reglas de negocio | 122 |
+| `E-Invoicing Service` | UBL 2.1 · XMLDSig · SOAP con WSDL propio | 62 |
+| `Auditoria.Utility` | Append-only sobre PostgreSQL | 31 |
+| **ESB** | Ruteo, ruteo por contenido, mediación REST⇄SOAP, auditoría | 60 |
+| **Registro UDDI** | Modelo de datos UDDI sobre REST, 15 servicios publicados | 36 |
+| `service-kit` · `xml-kit` | Base común y toolchain XML | 33 |
+| Spikes de riesgo | XML · SOAP · SQLCipher · Node 24 | 11 |
+
+### Demo verificada
+
+```
+1. Caja abierta, fondo S/ 200
+2. Ticket: producto x3 + servicio con cita  =  S/ 120
+3. Intento con BOLETA (cliente con RUC) →  BLOQUEADO, sugiere FACTURA
+4. Cierre con FACTURA, pago combinado    →  F001-1, vuelto S/ 30
+5. Comprobante entregado a E-Invoicing por el ESB
+6. UBL 2.1 → firma → gzip → SOAP → SUNAT →  ACEPTADO (código 0)
+
+Traza reconstruida: 22 pasos, 3 servicios, un solo correlationId.
+```
+
+### Pendiente
+
 | Fase | Estado |
 | :--- | :--- |
-| **0 — Fundaciones** | ✅ Completa. Infra, service-kit, xml-kit, generador, 4 spikes |
-| **1 — Contratos** | 🔄 En curso. Esquemas canónicos por servicio + `Auditoria.Utility` |
-| 2 — Fichas de los 7 servicios restantes | Pendiente |
-| 3 — Esqueleto vertical sobre el ESB | Pendiente |
-| 4 — `Sales & Customer Service` (3 builds) | Pendiente |
-| 5 — `E-Invoicing Service` (SOAP) + mediación | Pendiente |
-| 6 — Orquestación y BPM | Pendiente |
-| 7 — Servicios N2 | Pendiente |
-| 8 — Integración, auditoría y demo | Pendiente |
+| Servicios N2 (`Inventory`, `Order & Booking`, `Notification & Sync`) | Diseñados, sin implementar |
+| Stubs N3 (`Payment Gateway`, `Omnichannel`, `Analytics`) | Registrados en UDDI, sin implementar |
+| Orquestación BPMN (`ProcesoVenta`, `CierreCaja`, `ReservaServicio`) | Pendiente |
+| Terminal POS Tauri (Desktop · Tablet · Web) | Pendiente |
+| Persistencia PostgreSQL en Sales & Customer y E-Invoicing | En memoria; el patrón ya está probado en Auditoría |
+| **V-08** — ¿`Order & Booking` separado o fusionado? | **Decisión abierta** |
 
 ---
 

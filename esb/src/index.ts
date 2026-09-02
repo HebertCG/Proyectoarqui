@@ -19,6 +19,7 @@ const config = cargarConfig({ nombre: 'ESB', puertoPorDefecto: 3000 });
 const urlAuditoria = process.env['AUDITORIA_URL'] ?? 'http://localhost:3012';
 const urlSalesCustomer = process.env['SALES_CUSTOMER_URL'] ?? 'http://localhost:3001';
 const urlEInvoicing = process.env['EINVOICING_URL'] ?? 'http://localhost:3005';
+const urlRegistro = process.env['REGISTRO_URL'] ?? 'http://localhost:3010';
 
 /**
  * Tabla de ruteo declarativa. Añadir un servicio al inventario no debe exigir
@@ -57,14 +58,50 @@ const RUTAS: Ruta[] = [
   // Es el caso que justifica el bus (CLAUDE.md §5.3).
   {
     id: 'einvoicing-comprobantes',
-    metodos: ['POST'],
+    metodos: ['GET', 'POST'],
     prefijo: '/comprobantes',
     servicio: 'EInvoicing.Entity',
     destino: urlEInvoicing,
   },
+  // Descubrimiento de servicios. El bus lo rutea como cualquier otro servicio:
+  // el registro no es un caso especial del inventario.
+  {
+    id: 'registro-uddi',
+    metodos: ['GET', 'POST', 'PUT', 'DELETE'],
+    prefijo: '/uddi',
+    servicio: 'Registro.UDDI',
+    destino: urlRegistro,
+  },
+  // Trazabilidad: consultar que le paso a una operacion.
+  {
+    id: 'auditoria-trazas',
+    metodos: ['GET'],
+    prefijo: '/trazas',
+    servicio: 'Auditoria.Utility',
+    destino: urlAuditoria,
+  },
 ];
 
 const app = await crearServicio({ config });
+
+/**
+ * El bus es un proxy generico: transporta lo que venga. Fastify rechaza por
+ * defecto un POST con content-type JSON y cuerpo vacio, pero eso es un requisito
+ * del servicio DESTINO, no del bus. Una accion sin payload —por ejemplo
+ * `POST /comprobantes/{uuid}/envio`— es perfectamente legitima.
+ */
+app.addContentTypeParser(
+  'application/json',
+  { parseAs: 'string' },
+  (_peticion, cuerpo: string, hecho) => {
+    if (cuerpo === '' || cuerpo === undefined) return hecho(null, undefined);
+    try {
+      hecho(null, JSON.parse(cuerpo));
+    } catch (causa) {
+      hecho(causa as Error, undefined);
+    }
+  },
+);
 
 const bus = new Bus({
   tabla: new TablaRuteo(RUTAS),

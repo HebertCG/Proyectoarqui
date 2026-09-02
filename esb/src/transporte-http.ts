@@ -34,13 +34,18 @@ export class TransporteHttp implements Transporte {
     cabeceras: Record<string, string>,
   ): Promise<RespuestaDestino> {
     const url = `${ruta.destino}${mensaje.ruta}`;
-    const salientes = this.#prepararCabeceras(cabeceras, mensaje.correlationId);
+    const llevaCuerpo = cuerpo !== undefined && cuerpo !== null;
+    const salientes = this.#prepararCabeceras(
+      cabeceras,
+      mensaje.correlationId,
+      llevaCuerpo,
+    );
 
     try {
       const respuesta = await fetch(url, {
         method: mensaje.metodo,
         headers: salientes,
-        body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
+        body: llevaCuerpo ? JSON.stringify(cuerpo) : undefined,
         signal: AbortSignal.timeout(this.#timeoutMs),
       });
 
@@ -62,16 +67,25 @@ export class TransporteHttp implements Transporte {
   #prepararCabeceras(
     entrantes: Record<string, string>,
     correlationId: string,
+    llevaCuerpo: boolean,
   ): Record<string, string> {
     const salientes: Record<string, string> = {};
 
     for (const [clave, valor] of Object.entries(entrantes)) {
-      if (!CABECERAS_OMITIDAS.has(clave.toLowerCase())) salientes[clave] = valor;
+      const nombre = clave.toLowerCase();
+      if (CABECERAS_OMITIDAS.has(nombre)) continue;
+
+      // Declarar `content-type: application/json` sin enviar cuerpo hace que el
+      // destino rechace la peticion: anuncia un JSON que nunca llega. Una accion
+      // sin payload —`POST /comprobantes/{uuid}/envio`— es perfectamente valida.
+      if (nombre === 'content-type' && !llevaCuerpo) continue;
+
+      salientes[clave] = valor;
     }
 
     // Sin esto la traza se corta en el bus.
     salientes[CABECERA_CORRELACION] = correlationId;
-    salientes['content-type'] ??= 'application/json';
+    if (llevaCuerpo) salientes['content-type'] ??= 'application/json';
 
     return salientes;
   }
