@@ -165,7 +165,7 @@ servicios/
 packages/           service-kit (base común) · xml-kit (toolchain XML) · contracts (tipos)
 esb/                Ruteo, mediación, transformación, políticas
 registro/           Registro de servicios con modelo de datos UDDI
-orquestacion/       Procesos BPMN
+orquestacion/       Motor BPMN + definiciones .bpmn (el diagrama ES el código)
 infra/              docker-compose y scripts
 docs/00-base/       Documentos fuente. Determinantes, no se reinterpretan.
 docs/adr/           Decisiones de arquitectura con su justificación
@@ -177,29 +177,57 @@ tools/              Generador de servicios del inventario
 
 ## Estado
 
-**Nivel N1 operativo end-to-end.** 356 pruebas en verde.
+**Nivel N1 operativo end-to-end, con orquestación BPMN.** 445 pruebas en verde.
 
 | Componente | Estado | Pruebas |
 | :--- | :--- | :--- |
-| `Sales & Customer Service` | Catálogo · Caja · Venta · reglas de negocio | 122 |
-| `E-Invoicing Service` | UBL 2.1 · XMLDSig · SOAP con WSDL propio | 62 |
+| `Sales & Customer Service` | Catálogo · Caja · **Cliente/CRM** · Venta · reglas de negocio | 145 |
+| `E-Invoicing Service` | UBL 2.1 · XMLDSig · SOAP con WSDL propio | 63 |
+| **`ProcesoVenta.Task`** | Orquestador: ejecuta el `.bpmn` real con compensación | 44 |
+| **`@pos/orquestacion`** | Motor BPMN 2.0 sobre `bpmn-engine` | 21 |
 | `Auditoria.Utility` | Append-only sobre PostgreSQL | 31 |
 | **ESB** | Ruteo, ruteo por contenido, mediación REST⇄SOAP, auditoría | 60 |
 | **Registro UDDI** | Modelo de datos UDDI sobre REST, 15 servicios publicados | 36 |
-| `service-kit` · `xml-kit` | Base común y toolchain XML | 33 |
+| `service-kit` · `xml-kit` | Base común y toolchain XML | 34 |
 | Spikes de riesgo | XML · SOAP · SQLCipher · Node 24 | 11 |
 
-### Demo verificada
+### El proceso de negocio **es** el diagrama
+
+`ProcesoVenta` vive en [`orquestacion/definiciones/proceso-venta.bpmn`](orquestacion/definiciones/proceso-venta.bpmn),
+un BPMN 2.0 que se abre en [bpmn.io](https://bpmn.io) o Camunda Modeler — y es **el mismo
+archivo que ejecuta el motor**. No hay una versión de código que pueda desviarse del dibujo.
+
+La compensación es la canónica de BPMN (evento de borde `compensateEventDefinition` + tarea
+`isForCompensation`), no una saga escrita a mano. Su regla central es de negocio:
+
+| Situación | ¿Revierte la venta? |
+| :--- | :--- |
+| SUNAT **rechaza** con un SOAP Fault | **Sí** — el comprobante no podrá existir nunca |
+| SUNAT **inalcanzable** (red, WSDL, timeout) | **No** — queda en cola y el worker reintenta |
+
+Confundir las dos revertiría ventas buenas cada vez que se cae internet.
+
+### Demo verificada en vivo
+
+Con los seis servicios levantados, todo por el bus:
 
 ```
 1. Caja abierta, fondo S/ 200
 2. Ticket: producto x3 + servicio con cita  =  S/ 120
-3. Intento con BOLETA (cliente con RUC) →  BLOQUEADO, sugiere FACTURA
-4. Cierre con FACTURA, pago combinado    →  F001-1, vuelto S/ 30
-5. Comprobante entregado a E-Invoicing por el ESB
-6. UBL 2.1 → firma → gzip → SOAP → SUNAT →  ACEPTADO (código 0)
 
-Traza reconstruida: 22 pasos, 3 servicios, un solo correlationId.
+   POST /procesos/venta  con BOLETA  (cliente con RUC)
+   →  422  el proceso corta ANTES de cobrar
+      Inicio → VerificarComprobante → PuertaCompatible → FinIncompatible
+
+   POST /procesos/venta  con FACTURA, SUNAT inalcanzable
+   →  202  venta cobrada, comprobante en cola, SIN revertir
+      … → EnviarASunat → PuertaResultado → FinPendiente
+
+   POST /procesos/venta  con FACTURA, SUNAT respondiendo
+   →  200  F001-3 ACEPTADO, vuelto S/ 30, en 964 ms
+      … → EnviarASunat → PuertaResultado → FinAceptado
+
+Traza reconstruida: 24 pasos, 4 servicios, un solo correlationId.
 ```
 
 ### Pendiente
@@ -208,7 +236,8 @@ Traza reconstruida: 22 pasos, 3 servicios, un solo correlationId.
 | :--- | :--- |
 | Servicios N2 (`Inventory`, `Order & Booking`, `Notification & Sync`) | Diseñados, sin implementar |
 | Stubs N3 (`Payment Gateway`, `Omnichannel`, `Analytics`) | Registrados en UDDI, sin implementar |
-| Orquestación BPMN (`ProcesoVenta`, `CierreCaja`, `ReservaServicio`) | Pendiente |
+| Orquestación BPMN — `ProcesoVenta` | ✅ Implementado y ejecutándose |
+| Orquestación BPMN — `CierreCaja`, `ReservaServicio` | Pendientes |
 | Terminal POS Tauri (Desktop · Tablet · Web) | Pendiente |
 | Persistencia PostgreSQL en Sales & Customer y E-Invoicing | En memoria; el patrón ya está probado en Auditoría |
 | **V-08** — ¿`Order & Booking` separado o fusionado? | **Decisión abierta** |
