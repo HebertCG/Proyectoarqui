@@ -5,6 +5,7 @@
  * depende de stock, un SERVICIO depende de tiempo, personal y recurso.
  */
 import type { ItemCatalogo } from './catalogo/repositorio.js';
+import type { Cliente } from './cliente/repositorio.js';
 
 export const CATALOGO_SEMILLA: ItemCatalogo[] = [
   {
@@ -68,19 +69,41 @@ export const CATALOGO_SEMILLA: ItemCatalogo[] = [
  * Clientes de ejemplo. Cubren las tres modalidades de identificacion
  * (RF-CRM-01), que es lo que determina el comprobante emitible.
  */
-export const CLIENTES_SEMILLA: Record<
-  string,
-  { tipoDocumento: 'DNI' | 'RUC' | 'GENERICO'; numeroDocumento?: string }
-> = {
-  'aaaaaaaa-1111-4111-8111-111111111111': {
+export const CLIENTES_SEMILLA: Cliente[] = [
+  {
+    uuid: 'aaaaaaaa-1111-4111-8111-111111111111',
     tipoDocumento: 'RUC',
     numeroDocumento: '20512345678',
+    razonSocial: 'Distribuidora Andina SAC',
+    nombreComercial: 'Andina',
+    contacto: { telefono: '987654321', correo: 'ventas@andina.pe' },
+    segmento: 'MAYORISTA',
+    listaPrecios: 'MAYORISTA',
+    fidelizacion: { puntosAcumulados: 0, puntosRedimidos: 0 },
+    activo: true,
+    trazabilidad: { creadoPor: 'semilla', creadoEn: '2026-01-01T00:00:00.000Z' },
   },
-  'bbbbbbbb-2222-4222-8222-222222222222': {
+  {
+    uuid: 'bbbbbbbb-2222-4222-8222-222222222222',
     tipoDocumento: 'DNI',
     numeroDocumento: '45678912',
+    razonSocial: 'Maria Perez Quispe',
+    contacto: { telefono: '912345678' },
+    segmento: 'REGULAR',
+    listaPrecios: 'REGULAR',
+    fidelizacion: { puntosAcumulados: 120, puntosRedimidos: 0 },
+    activo: true,
+    trazabilidad: { creadoPor: 'semilla', creadoEn: '2026-01-01T00:00:00.000Z' },
   },
-  'cccccccc-3333-4333-8333-333333333333': {
+  {
+    // Sin documento tributario: solo admite nota de venta (RF-POS-18).
+    uuid: 'cccccccc-3333-4333-8333-333333333333',
     tipoDocumento: 'GENERICO',
+    codigoInterno: 'GEN-MOSTRADOR',
+    razonSocial: 'Cliente de mostrador',
+    segmento: 'REGULAR',
+    listaPrecios: 'REGULAR',
+    activo: true,
+    trazabilidad: { creadoPor: 'semilla', creadoEn: '2026-01-01T00:00:00.000Z' },
   },
-};
+];
