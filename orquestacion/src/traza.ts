@@ -17,17 +17,24 @@ export interface PasoTraza {
   duracionMs: number;
   salida?: Record<string, unknown>;
   error?: string;
+  /**
+   * Código estable del error, cuando el servicio lo aporta. El mensaje es
+   * prosa y cambia; el código es el que sirve para diagnosticar y para
+   * decidir qué hacer.
+   */
+  codigoError?: string;
 }
 
 /**
- * Cómo terminó el proceso. Cada valor corresponde a un evento de fin del
- * modelo BPMN: el diagrama y el resultado no pueden divergir.
+ * Id del evento de fin alcanzado en el modelo BPMN.
+ *
+ * Es `string` a propósito: el motor es genérico y no puede conocer los
+ * desenlaces de cada proceso. Cada servicio de tarea declara los suyos como
+ * unión cerrada y valida que el que llegó sea uno de ellos — así, añadir un
+ * evento de fin al `.bpmn` sin decidir qué significa se detecta en el borde,
+ * no en un `undefined` silencioso a mitad de una respuesta.
  */
-export type Desenlace =
-  | 'FinAceptado'
-  | 'FinPendiente'
-  | 'FinCompensado'
-  | 'FinIncompatible';
+export type Desenlace = string;
 
 export interface TrazaProceso {
   proceso: string;

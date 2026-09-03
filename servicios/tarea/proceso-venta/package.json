@@ -1,0 +1,28 @@
+{
+  "name": "@pos/proceso-venta",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ProcesoVenta.Task — orquesta venta y comprobante fiscal sobre un modelo BPMN",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@pos/orquestacion": "workspace:*",
+    "@pos/service-kit": "workspace:*",
+    "@sinclair/typebox": "^0.34.0",
+    "fastify": "^5.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

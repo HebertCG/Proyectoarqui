@@ -20,6 +20,7 @@ const urlAuditoria = process.env['AUDITORIA_URL'] ?? 'http://localhost:3012';
 const urlSalesCustomer = process.env['SALES_CUSTOMER_URL'] ?? 'http://localhost:3001';
 const urlEInvoicing = process.env['EINVOICING_URL'] ?? 'http://localhost:3005';
 const urlRegistro = process.env['REGISTRO_URL'] ?? 'http://localhost:3010';
+const urlProcesoVenta = process.env['PROCESO_VENTA_URL'] ?? 'http://localhost:3020';
 
 /**
  * Tabla de ruteo declarativa. Añadir un servicio al inventario no debe exigir
@@ -62,6 +63,15 @@ const RUTAS: Ruta[] = [
     prefijo: '/comprobantes',
     servicio: 'EInvoicing.Entity',
     destino: urlEInvoicing,
+  },
+  // Orquestacion. El servicio de tarea entra al bus como uno mas: el proceso
+  // de negocio se invoca igual que cualquier operacion del inventario.
+  {
+    id: 'proceso-venta',
+    metodos: ['GET', 'POST'],
+    prefijo: '/procesos/venta',
+    servicio: 'ProcesoVenta.Task',
+    destino: urlProcesoVenta,
   },
   // Descubrimiento de servicios. El bus lo rutea como cualquier otro servicio:
   // el registro no es un caso especial del inventario.

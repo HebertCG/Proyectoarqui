@@ -232,6 +232,37 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@22.20.1)(tsx@4.23.13)
 
+  servicios/tarea/proceso-venta:
+    dependencies:
+      '@pos/orquestacion':
+        specifier: workspace:*
+        version: link:../../../orquestacion
+      '@pos/service-kit':
+        specifier: workspace:*
+        version: link:../../../packages/service-kit
+      '@sinclair/typebox':
+        specifier: ^0.34.0
+        version: 0.34.52
+      fastify:
+        specifier: ^5.2.0
+        version: 5.12.1
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.1
+      '@vitest/coverage-v8':
+        specifier: ^3.0.0
+        version: 3.2.7(vitest@3.2.7(@types/node@22.20.1)(tsx@4.23.13))
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.13
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.1)(tsx@4.23.13)
+
   servicios/utilidad/auditoria:
     dependencies:
       '@pos/service-kit':

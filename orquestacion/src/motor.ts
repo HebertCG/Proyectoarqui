@@ -76,7 +76,7 @@ export class MotorBpmn {
     const oyente = new EventEmitter();
     oyente.on('activity.end', (api: { id: string; type?: string }) => {
       traza.registrarVisita(api.id);
-      if (api.type === TIPO_EVENTO_FIN) desenlace = api.id as Desenlace;
+      if (api.type === TIPO_EVENTO_FIN) desenlace = api.id;
     });
     oyente.on('activity.error', (api: { id: string }) => {
       traza.registrarVisita(`!${api.id}`);
@@ -174,14 +174,32 @@ export class MotorBpmn {
         })
         .catch((causa: unknown) => {
           const mensaje = causa instanceof Error ? causa.message : String(causa);
+          const codigo = codigoDe(causa);
+
           ctx.traza.registrarPaso({
             actividad: id,
             resultado: 'ERROR',
             duracionMs: Date.now() - inicio,
             error: mensaje,
+            ...(codigo ? { codigoError: codigo } : {}),
           });
           callback(causa instanceof Error ? causa : new Error(mensaje));
         });
     };
   }
+}
+
+/**
+ * Extrae el código del error si el servicio lo aporta.
+ *
+ * Se hace por duck typing y no importando el tipo de error del inventario: el
+ * motor es infraestructura genérica y no debe depender del `service-kit`.
+ */
+function codigoDe(causa: unknown): string | undefined {
+  if (typeof causa !== 'object' || causa === null) return undefined;
+
+  const candidato = (causa as { codigo?: unknown; code?: unknown });
+  const codigo = candidato.codigo ?? candidato.code;
+
+  return typeof codigo === 'string' ? codigo : undefined;
 }
