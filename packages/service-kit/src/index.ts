@@ -45,6 +45,7 @@ export {
   AlmacenMemoria,
   esUuidV4,
   CABECERA_IDEMPOTENCIA,
+  claveDeOperacion,
   METODOS_PROTEGIDOS,
   type AlmacenIdempotencia,
   type RespuestaGuardada,

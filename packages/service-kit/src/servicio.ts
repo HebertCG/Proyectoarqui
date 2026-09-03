@@ -16,6 +16,7 @@ import {
   AlmacenMemoria,
   CABECERA_IDEMPOTENCIA,
   METODOS_PROTEGIDOS,
+  claveDeOperacion,
   esUuidV4,
   type AlmacenIdempotencia,
 } from './idempotencia.js';
@@ -95,14 +96,22 @@ export async function crearServicio(
       );
     }
 
-    const previa = await almacen.obtener(clave);
+    // Acotada a la operación: la misma clave sobre dos endpoints distintos son
+    // dos cosas distintas, no un reenvío.
+    const clavePorOperacion = claveDeOperacion(
+      peticion.method,
+      rutaDe(peticion),
+      clave,
+    );
+
+    const previa = await almacen.obtener(clavePorOperacion);
     if (previa) {
       // Reenvío de algo ya procesado: se devuelve la respuesta original.
       respuesta.header('idempotent-replay', 'true');
       return respuesta.code(previa.estado).send(previa.cuerpo);
     }
 
-    const reservada = await almacen.reservar(clave);
+    const reservada = await almacen.reservar(clavePorOperacion);
     if (!reservada) {
       throw new ErrorServicio(
         'CONFLICTO',
@@ -119,14 +128,20 @@ export async function crearServicio(
     if (!METODOS_PROTEGIDOS.has(peticion.method)) return cuerpo;
     if (respuesta.getHeader('idempotent-replay')) return cuerpo;
 
+    const clavePorOperacion = claveDeOperacion(
+      peticion.method,
+      rutaDe(peticion),
+      clave,
+    );
+
     if (respuesta.statusCode < 500) {
-      await almacen.guardar(clave, {
+      await almacen.guardar(clavePorOperacion, {
         estado: respuesta.statusCode,
         cuerpo: typeof cuerpo === 'string' ? JSON.parse(cuerpo) : cuerpo,
         guardadoEn: Date.now(),
       });
     } else {
-      await almacen.liberar(clave);
+      await almacen.liberar(clavePorOperacion);
     }
     return cuerpo;
   });
@@ -221,4 +236,13 @@ export async function crearServicio(
   );
 
   return app;
+}
+
+/**
+ * Plantilla de la ruta (`/ventas/tickets/:uuid/cierre`). Si Fastify no la
+ * expone —ruta no encontrada, por ejemplo— cae a la URL concreta, que sigue
+ * distinguiendo operaciones aunque sea menos estable.
+ */
+function rutaDe(peticion: FastifyRequest): string {
+  return peticion.routeOptions?.url ?? peticion.url;
 }

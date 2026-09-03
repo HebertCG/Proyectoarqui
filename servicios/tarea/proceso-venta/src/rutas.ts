@@ -15,15 +15,23 @@ import { cargarDefinicion, MotorBpmn, PROCESOS, type TrazaProceso } from '@pos/o
 import { construirActividades } from './actividades.js';
 import type { Esb } from './cliente-esb.js';
 
+/**
+ * Las formas de pago del dominio, tal cual las define `Sales & Customer
+ * Service`. El orquestador no inventa las suyas: rechazar aquí un pago que el
+ * servicio sí acepta sería un 400 por una regla que no existe.
+ */
+const FORMAS_PAGO = [
+  Type.Literal('EFECTIVO'),
+  Type.Literal('TARJETA_DEBITO'),
+  Type.Literal('TARJETA_CREDITO'),
+  Type.Literal('YAPE'),
+  Type.Literal('PLIN'),
+  Type.Literal('TRANSFERENCIA'),
+  Type.Literal('PUNTOS'),
+];
+
 const EsquemaPago = Type.Object({
-  formaPago: Type.Union([
-    Type.Literal('EFECTIVO'),
-    Type.Literal('TARJETA'),
-    Type.Literal('YAPE'),
-    Type.Literal('PLIN'),
-    Type.Literal('TRANSFERENCIA'),
-    Type.Literal('CREDITO'),
-  ]),
+  formaPago: Type.Union(FORMAS_PAGO),
   monto: Type.Number({ exclusiveMinimum: 0 }),
   montoRecibido: Type.Optional(Type.Number({ minimum: 0 })),
   referencia: Type.Optional(Type.String({ maxLength: 60 })),

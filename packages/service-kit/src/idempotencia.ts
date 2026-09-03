@@ -70,5 +70,26 @@ export class AlmacenMemoria implements AlmacenIdempotencia {
 
 export const CABECERA_IDEMPOTENCIA = 'idempotency-key';
 
+/**
+ * Acota la clave a la operación concreta.
+ *
+ * Sin esto, dos operaciones distintas que compartan clave colisionan y la
+ * segunda recibe la respuesta cacheada de la primera. El caso que lo destapó:
+ * cerrar y luego revertir el mismo ticket con la misma clave devolvía el cierre
+ * y **la reversión no llegaba a ejecutarse** — una compensación que no compensa
+ * y no avisa.
+ *
+ * Se usa la plantilla de ruta (`/ventas/tickets/:uuid/cierre`), no la URL
+ * concreta: reusar una clave sobre otro recurso del mismo endpoint sigue siendo
+ * un error del llamante, que es la semántica estándar.
+ */
+export function claveDeOperacion(
+  metodo: string,
+  ruta: string,
+  clave: string,
+): string {
+  return `${metodo} ${ruta}#${clave}`;
+}
+
 /** Métodos que cambian estado y por tanto requieren protección. */
 export const METODOS_PROTEGIDOS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

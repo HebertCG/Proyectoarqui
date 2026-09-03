@@ -98,8 +98,10 @@ export function construirActividades(esb: Esb): Record<string, Actividad> {
         ruta: `/ventas/tickets/${ticketUuid}/cierre`,
         correlationId: ctx.correlationId,
         cuerpo: { tipoComprobante, pagos },
-        // El mismo correlationId no debe cobrar dos veces si el bus reintenta.
-        claveIdempotencia: ctx.correlationId,
+        // El uuid del ticket: es UUIDv4 —lo que el servicio exige— y es estable
+        // entre reintentos, que es justo lo que hace falta. El correlationId no
+        // sirve: lo pone el llamante y puede ser cualquier cadena.
+        claveIdempotencia: ticketUuid,
       });
 
       const { ticket, comprobante, vuelto } = exigirExito(respuesta, 'Al cerrar la venta');
@@ -203,7 +205,9 @@ export function construirActividades(esb: Esb): Record<string, Actividad> {
           motivo: `SUNAT rechazó el comprobante de forma definitiva: ${motivoSunat}`,
           codigoAutorizacion,
         },
-        claveIdempotencia: `rev-${ticketUuid}`,
+        // Misma clave que el cierre, y no colisionan: el almacén las acota por
+        // operación (`claveDeOperacion` en service-kit).
+        claveIdempotencia: ticketUuid,
       });
 
       const resultado = exigirExito(respuesta, 'Al revertir la venta');

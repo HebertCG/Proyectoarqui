@@ -212,20 +212,66 @@ export function interpretarCdr(cdrBase64: string): RespuestaEnvio {
 }
 
 /**
- * Distingue el fallo de red del rechazo de negocio.
+ * Distingue el fallo de infraestructura del rechazo de negocio.
  *
- * Es la diferencia entre reintentar —y que acabe aceptándose— o reintentar para
- * siempre un comprobante que SUNAT nunca va a aceptar.
+ * Es la diferencia entre reintentar —y que acabe aceptándose— o dar por
+ * definitivo un comprobante que sí podía emitirse. Lo segundo es lo caro: el
+ * orquestador compensa y revierte una venta ya cobrada.
  */
 function traducirError(causa: unknown): ErrorSunat {
   const mensaje = causa instanceof Error ? causa.message : String(causa);
-  const esRed = /timeout|ECONN|ENOTFOUND|socket|network/i.test(mensaje);
+
+  // Solo es definitivo si SUNAT **respondio y rechazo**: un SOAP Fault. Todo lo
+  // demas —no se pudo resolver el WSDL, 404, TLS, timeout, DNS— es de
+  // infraestructura y se reintenta.
+  //
+  // La direccion del fallo importa: clasificar de menos se traduce en un
+  // comprobante que espera en cola; clasificar de mas hace que el orquestador
+  // compense y revierta una venta que estaba bien. Ante la duda, se reintenta.
+  const fault = esSoapFault(causa);
+
+  if (!fault) {
+    return new ErrorSunat(
+      'RED',
+      `No se pudo contactar con SUNAT: ${mensaje}`,
+      true,
+    );
+  }
 
   return new ErrorSunat(
-    esRed ? 'RED' : 'SOAP_FAULT',
-    esRed
-      ? `No se pudo contactar con SUNAT: ${mensaje}`
-      : `SUNAT rechazó la petición: ${mensaje}`,
-    esRed,
+    'SOAP_FAULT',
+    `SUNAT rechazo la peticion: ${fault}`,
+    false,
   );
 }
+
+/**
+ * Devuelve el motivo del Fault, o `null` si el error no es un SOAP Fault.
+ *
+ * `node-soap` cuelga el sobre parseado en `err.root.Envelope.Body.Fault` cuando
+ * el servidor respondio con un Fault. Se comprueba la estructura y no el texto
+ * del mensaje: un mensaje que casualmente contenga la palabra "fault" no es un
+ * rechazo de SUNAT.
+ */
+function esSoapFault(causa: unknown): string | null {
+  if (typeof causa !== 'object' || causa === null) return null;
+
+  const raiz = (causa as { root?: { Envelope?: { Body?: { Fault?: unknown } } } }).root;
+  const fault = raiz?.Envelope?.Body?.Fault;
+  if (!fault) return null;
+
+  const detalle = fault as {
+    faultstring?: unknown;
+    Reason?: { Text?: unknown };
+    detail?: unknown;
+  };
+
+  const texto =
+    (typeof detalle.faultstring === 'string' && detalle.faultstring) ||
+    (typeof detalle.Reason?.Text === 'string' && detalle.Reason.Text) ||
+    null;
+
+  // Hay Fault pero sin texto legible: sigue siendo un rechazo de SUNAT.
+  return texto ?? 'la autoridad devolvio un SOAP Fault sin detalle';
+}
+

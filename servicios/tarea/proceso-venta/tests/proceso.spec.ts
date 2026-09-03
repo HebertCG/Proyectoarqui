@@ -205,11 +205,15 @@ describe('EjecutarProcesoVenta — venta facturada', () => {
     expect(ids.size).toBe(1);
   });
 
-  it('protege el cobro con clave de idempotencia', async () => {
+  it('protege el cobro con una clave que es UUIDv4 y estable entre reintentos', async () => {
     await ejecutar(esb);
 
     const cierre = esb.llamadas.find((l) => l.ruta.endsWith('/cierre'));
-    expect(cierre?.claveIdempotencia).toBeTruthy();
+    // El correlationId no vale: lo pone el llamante y puede ser cualquier cosa.
+    expect(cierre?.claveIdempotencia).toBe(TICKET);
+    expect(cierre?.claveIdempotencia).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
   });
 
   it('usa el uuid del comprobante como clave al registrarlo, no el correlationId', async () => {
@@ -466,6 +470,27 @@ describe('EjecutarProcesoVenta — ticket sin cliente', () => {
 });
 
 describe('Validación de la petición', () => {
+  it('acepta todas las formas de pago del dominio, sin inventar las suyas', async () => {
+    for (const formaPago of [
+      'EFECTIVO',
+      'TARJETA_DEBITO',
+      'TARJETA_CREDITO',
+      'YAPE',
+      'PLIN',
+      'TRANSFERENCIA',
+      'PUNTOS',
+    ]) {
+      const app = await montar(new EsbSimulado());
+      const r = await app.inject({
+        method: 'POST',
+        url: '/procesos/venta',
+        payload: { ...PETICION_BASE, pagos: [{ formaPago, monto: 120 }] },
+      });
+
+      expect(r.statusCode, `forma de pago ${formaPago}`).not.toBe(400);
+    }
+  });
+
   it('exige un código de autorización: sin él no se podría compensar', async () => {
     const app = await montar(new EsbSimulado());
     const r = await app.inject({

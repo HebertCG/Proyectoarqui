@@ -332,6 +332,28 @@ describe('ClienteSunatSoap — el cliente que hablara con SUNAT', () => {
     }
   });
 
+  it('un WSDL que responde 404 es REINTENTABLE, no un rechazo', async () => {
+    // El caso que lo destapo en la demo real: el endpoint beta de SUNAT
+    // devolvio 404 al pedir el WSDL. Clasificarlo como rechazo definitivo hizo
+    // que el orquestador compensara y revirtiera una venta que estaba bien.
+    const cliente = new ClienteSunatSoap(
+      `http://127.0.0.1:${PUERTO}/ruta-que-no-existe`,
+      credenciales,
+      3000,
+    );
+
+    try {
+      await cliente.enviarComprobante('20512345678-01-F001-129.zip', 'x');
+      expect.unreachable('debio lanzar');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ErrorSunat);
+      if (e instanceof ErrorSunat) {
+        expect(e.reintentable).toBe(true);
+        expect(e.codigo).toBe('RED');
+      }
+    }
+  });
+
   it('un SOAP Fault de negocio NO es reintentable', async () => {
     const cliente = new ClienteSunatSoap(
       `http://127.0.0.1:${PUERTO}${RUTA}`,

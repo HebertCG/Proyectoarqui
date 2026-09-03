@@ -50,6 +50,14 @@ beforeEach(async () => {
     },
   );
 
+  // Segunda operación protegida: sirve para verificar que una clave repetida
+  // en otro endpoint no devuelve la respuesta cacheada del primero.
+  let reversiones = 0;
+  app.post('/revertir/:uuid', async (peticion) => {
+    reversiones += 1;
+    return exito({ reversiones }, app.meta(peticion));
+  });
+
   await app.ready();
 });
 
@@ -145,6 +153,28 @@ describe('idempotencia (RF-SYNC-07, RNF-09)', () => {
     expect(segunda.json().datos.ejecuciones).toBe(1);
     expect(tercera.json().datos.ejecuciones).toBe(1);
     expect(segunda.headers['idempotent-replay']).toBe('true');
+  });
+
+  it('la misma clave en OTRO endpoint no devuelve la respuesta cacheada', async () => {
+    // El caso real que lo destapó: cerrar y luego revertir el mismo ticket con
+    // la misma clave. Si colisionan, la reversión nunca se ejecuta y quien
+    // llama cree que sí — una compensación que no compensa y no avisa.
+    const cierre = await app.inject({
+      method: 'POST',
+      url: '/contar',
+      headers: { [CABECERA_IDEMPOTENCIA]: clave },
+      payload: { monto: 100 },
+    });
+
+    const reversion = await app.inject({
+      method: 'POST',
+      url: '/revertir/abc',
+      headers: { [CABECERA_IDEMPOTENCIA]: clave },
+    });
+
+    expect(cierre.json().datos).toHaveProperty('ejecuciones');
+    expect(reversion.json().datos).toEqual({ reversiones: 1 });
+    expect(reversion.headers['idempotent-replay']).toBeUndefined();
   });
 
   it('claves distintas ejecutan de forma independiente', async () => {
