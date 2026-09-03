@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ProcesoVenta.Task - venta de mostrador hasta comprobante fiscal.
+
+  Este archivo NO es un dibujo: es el que ejecuta `bpmn-engine`. Se abre y se
+  edita en bpmn.io o Camunda Modeler, y lo que se ve aqui es literalmente lo que
+  corre (CLAUDE.md 4.3, sesiones 17-19 y 27-28).
+
+  Compensacion (sesion 29): `CerrarVenta` lleva un evento de borde de
+  compensacion asociado a `RevertirVenta`. Si SUNAT rechaza el comprobante de
+  forma definitiva, el evento intermedio `DispararCompensacion` la ejecuta.
+-->
+<bpmn:definitions
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    id="Definiciones_ProcesoVenta"
+    targetNamespace="urn:pos:orquestacion:v1"
+    exporter="ProyectoArqui" exporterVersion="1.0">
+
+  <bpmn:process id="ProcesoVenta" name="Proceso de Venta" isExecutable="true">
+
+    <bpmn:startEvent id="Inicio" name="Ticket listo para cobrar">
+      <bpmn:outgoing>Flujo_a_Verificar</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <!-- 1. Validacion previa. Solo lee: no necesita compensacion. -->
+    <bpmn:serviceTask id="VerificarComprobante" name="Verificar comprobante"
+        implementation="${environment.services.VerificarComprobante}">
+      <bpmn:incoming>Flujo_a_Verificar</bpmn:incoming>
+      <bpmn:outgoing>Flujo_a_PuertaCompatible</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:exclusiveGateway id="PuertaCompatible" name="Compatible con el documento?"
+        default="Flujo_Incompatible">
+      <bpmn:incoming>Flujo_a_PuertaCompatible</bpmn:incoming>
+      <bpmn:outgoing>Flujo_Compatible</bpmn:outgoing>
+      <bpmn:outgoing>Flujo_Incompatible</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <!-- RF-POS-18: se corta aqui. Emitir de todos modos produce algo que
+         SUNAT rechazaria, y ya habriamos cobrado. -->
+    <bpmn:endEvent id="FinIncompatible" name="Comprobante incompatible">
+      <bpmn:incoming>Flujo_Incompatible</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- 2. Punto de no retorno: cobra, cierra el ticket y emite el correlativo
+         local. Es el unico paso con efecto reversible que hay que compensar. -->
+    <bpmn:serviceTask id="CerrarVenta" name="Cerrar venta"
+        implementation="${environment.services.CerrarVenta}">
+      <bpmn:incoming>Flujo_Compatible</bpmn:incoming>
+      <bpmn:outgoing>Flujo_a_Registrar</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="CompensacionCierre" attachedToRef="CerrarVenta">
+      <bpmn:compensateEventDefinition id="DefCompensacionCierre" />
+    </bpmn:boundaryEvent>
+
+    <!-- ADR-002: el estado tributario decide si esto es anulacion o nota de
+         credito. La tarea no lo elige: lo consulta. -->
+    <bpmn:serviceTask id="RevertirVenta" name="Revertir venta" isForCompensation="true"
+        implementation="${environment.services.RevertirVenta}" />
+
+    <bpmn:association id="Asociacion_Compensacion" associationDirection="One"
+        sourceRef="CompensacionCierre" targetRef="RevertirVenta" />
+
+    <!-- 3. Entrega al servicio de facturacion. Idempotente por UUID. -->
+    <bpmn:serviceTask id="RegistrarComprobante" name="Registrar comprobante"
+        implementation="${environment.services.RegistrarComprobante}">
+      <bpmn:incoming>Flujo_a_Registrar</bpmn:incoming>
+      <bpmn:outgoing>Flujo_a_Enviar</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- 4. La llamada externa. El ESB media REST/JSON -> SOAP/XML hacia SUNAT. -->
+    <bpmn:serviceTask id="EnviarASunat" name="Enviar a SUNAT"
+        implementation="${environment.services.EnviarASunat}">
+      <bpmn:incoming>Flujo_a_Enviar</bpmn:incoming>
+      <bpmn:outgoing>Flujo_a_PuertaResultado</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:exclusiveGateway id="PuertaResultado" name="Que respondio SUNAT?"
+        default="Flujo_Rechazado">
+      <bpmn:incoming>Flujo_a_PuertaResultado</bpmn:incoming>
+      <bpmn:outgoing>Flujo_Aceptado</bpmn:outgoing>
+      <bpmn:outgoing>Flujo_Reintentable</bpmn:outgoing>
+      <bpmn:outgoing>Flujo_Rechazado</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:endEvent id="FinAceptado" name="Venta facturada">
+      <bpmn:incoming>Flujo_Aceptado</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Un corte de red NO revierte la venta: el comprobante queda en cola y el
+         worker reintenta. Es el comportamiento local-first (RNF-01), no un fallo. -->
+    <bpmn:endEvent id="FinPendiente" name="Pendiente de reenvio">
+      <bpmn:incoming>Flujo_Reintentable</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Rechazo definitivo: el comprobante no podra existir nunca. La venta
+         cobrada tiene que revertirse. Aqui si se compensa. -->
+    <bpmn:intermediateThrowEvent id="DispararCompensacion" name="Compensar">
+      <bpmn:incoming>Flujo_Rechazado</bpmn:incoming>
+      <bpmn:outgoing>Flujo_a_FinCompensado</bpmn:outgoing>
+      <bpmn:compensateEventDefinition id="DefDisparo" />
+    </bpmn:intermediateThrowEvent>
+
+    <bpmn:endEvent id="FinCompensado" name="Venta revertida">
+      <bpmn:incoming>Flujo_a_FinCompensado</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flujo_a_Verificar" sourceRef="Inicio" targetRef="VerificarComprobante" />
+    <bpmn:sequenceFlow id="Flujo_a_PuertaCompatible" sourceRef="VerificarComprobante" targetRef="PuertaCompatible" />
+    <bpmn:sequenceFlow id="Flujo_Compatible" name="si" sourceRef="PuertaCompatible" targetRef="CerrarVenta">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${environment.variables.compatible}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flujo_Incompatible" name="no" sourceRef="PuertaCompatible" targetRef="FinIncompatible" />
+    <bpmn:sequenceFlow id="Flujo_a_Registrar" sourceRef="CerrarVenta" targetRef="RegistrarComprobante" />
+    <bpmn:sequenceFlow id="Flujo_a_Enviar" sourceRef="RegistrarComprobante" targetRef="EnviarASunat" />
+    <bpmn:sequenceFlow id="Flujo_a_PuertaResultado" sourceRef="EnviarASunat" targetRef="PuertaResultado" />
+    <bpmn:sequenceFlow id="Flujo_Aceptado" name="aceptado" sourceRef="PuertaResultado" targetRef="FinAceptado">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${environment.variables.aceptado}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flujo_Reintentable" name="sin conexion" sourceRef="PuertaResultado" targetRef="FinPendiente">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${environment.variables.reintentable}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flujo_Rechazado" name="rechazado" sourceRef="PuertaResultado" targetRef="DispararCompensacion" />
+    <bpmn:sequenceFlow id="Flujo_a_FinCompensado" sourceRef="DispararCompensacion" targetRef="FinCompensado" />
+
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="Diagrama">
+    <bpmndi:BPMNPlane id="Plano" bpmnElement="ProcesoVenta">
+      <bpmndi:BPMNShape id="S_Inicio" bpmnElement="Inicio">
+        <dc:Bounds x="152" y="222" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="130" y="265" width="82" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_VerificarComprobante" bpmnElement="VerificarComprobante">
+        <dc:Bounds x="240" y="200" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_PuertaCompatible" bpmnElement="PuertaCompatible" isMarkerVisible="true">
+        <dc:Bounds x="395" y="215" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="372" y="272" width="97" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_FinIncompatible" bpmnElement="FinIncompatible">
+        <dc:Bounds x="402" y="82" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="378" y="125" width="85" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_CerrarVenta" bpmnElement="CerrarVenta">
+        <dc:Bounds x="500" y="200" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_CompensacionCierre" bpmnElement="CompensacionCierre">
+        <dc:Bounds x="532" y="262" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_RevertirVenta" bpmnElement="RevertirVenta">
+        <dc:Bounds x="500" y="380" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_RegistrarComprobante" bpmnElement="RegistrarComprobante">
+        <dc:Bounds x="660" y="200" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_EnviarASunat" bpmnElement="EnviarASunat">
+        <dc:Bounds x="820" y="200" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_PuertaResultado" bpmnElement="PuertaResultado" isMarkerVisible="true">
+        <dc:Bounds x="975" y="215" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="958" y="180" width="85" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_FinAceptado" bpmnElement="FinAceptado">
+        <dc:Bounds x="1102" y="222" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1082" y="265" width="78" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_FinPendiente" bpmnElement="FinPendiente">
+        <dc:Bounds x="982" y="82" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="958" y="125" width="85" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_DispararCompensacion" bpmnElement="DispararCompensacion">
+        <dc:Bounds x="982" y="402" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="975" y="445" width="52" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S_FinCompensado" bpmnElement="FinCompensado">
+        <dc:Bounds x="1102" y="402" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1080" y="445" width="82" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="E1" bpmnElement="Flujo_a_Verificar">
+        <di:waypoint x="188" y="240" /><di:waypoint x="240" y="240" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E2" bpmnElement="Flujo_a_PuertaCompatible">
+        <di:waypoint x="340" y="240" /><di:waypoint x="395" y="240" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E3" bpmnElement="Flujo_Compatible">
+        <di:waypoint x="445" y="240" /><di:waypoint x="500" y="240" />
+        <bpmndi:BPMNLabel><dc:Bounds x="464" y="222" width="12" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E4" bpmnElement="Flujo_Incompatible">
+        <di:waypoint x="420" y="215" /><di:waypoint x="420" y="118" />
+        <bpmndi:BPMNLabel><dc:Bounds x="428" y="160" width="15" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E5" bpmnElement="Flujo_a_Registrar">
+        <di:waypoint x="600" y="240" /><di:waypoint x="660" y="240" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E6" bpmnElement="Flujo_a_Enviar">
+        <di:waypoint x="760" y="240" /><di:waypoint x="820" y="240" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E7" bpmnElement="Flujo_a_PuertaResultado">
+        <di:waypoint x="920" y="240" /><di:waypoint x="975" y="240" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E8" bpmnElement="Flujo_Aceptado">
+        <di:waypoint x="1025" y="240" /><di:waypoint x="1102" y="240" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1038" y="222" width="48" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E9" bpmnElement="Flujo_Reintentable">
+        <di:waypoint x="1000" y="215" /><di:waypoint x="1000" y="118" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1008" y="160" width="70" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E10" bpmnElement="Flujo_Rechazado">
+        <di:waypoint x="1000" y="265" /><di:waypoint x="1000" y="402" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1008" y="330" width="55" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E11" bpmnElement="Flujo_a_FinCompensado">
+        <di:waypoint x="1018" y="420" /><di:waypoint x="1102" y="420" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E12" bpmnElement="Asociacion_Compensacion">
+        <di:waypoint x="550" y="298" /><di:waypoint x="550" y="380" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

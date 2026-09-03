@@ -12,6 +12,7 @@ packages:
   # Infraestructura SOA
   - 'esb'
   - 'registro'
+  - 'orquestacion'
 
   # Pruebas de riesgo técnico
   - 'spikes/*'

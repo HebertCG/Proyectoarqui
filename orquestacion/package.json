@@ -1,0 +1,28 @@
+{
+  "name": "@pos/orquestacion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Motor BPMN y saga de compensacion — base comun de los servicios de tarea",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "bpmn-engine": "^25.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
