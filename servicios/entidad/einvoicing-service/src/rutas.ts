@@ -13,6 +13,7 @@ import type { FastifyInstance } from 'fastify';
 import { exito, errorNoEncontrado, errorReglaNegocio } from '@pos/service-kit';
 
 import type { Comprobante, EstadoTributario } from './comprobante.js';
+import { consolidarPorSerie } from './reporte-xquery.js';
 import type { Emisor } from './emisor.js';
 import type { RepositorioComprobantes } from './repositorio.js';
 
@@ -230,6 +231,36 @@ export function registrarRutas(
   );
 
   // ── ConsultarPendientes ─────────────────────────────────────────
+  // ── ReporteConsolidado ──────────────────────────────────────────
+  // Resuelto con XQuery 3.1 sobre los comprobantes proyectados a XML: agrupar
+  // y sumar recorriendo un documento es exactamente para lo que existe el
+  // lenguaje, y aqui el dominio ya es XML de cabo a rabo (CLAUDE.md 5).
+  app.get(
+    '/comprobantes/reporte',
+    {
+      schema: {
+        querystring: Type.Object({
+          desde: Type.Optional(Type.String({ format: 'date' })),
+          hasta: Type.Optional(Type.String({ format: 'date' })),
+        }),
+      },
+    },
+    async (peticion) => {
+      const { desde, hasta } = peticion.query as { desde?: string; hasta?: string };
+
+      // Se pide sin paginar a proposito: un consolidado parcial no es un
+      // consolidado. El limite alto acota el peor caso sin partir el reporte.
+      const { comprobantes } = await repositorio.buscar({
+        desde,
+        hasta,
+        pagina: 1,
+        limite: 5000,
+      });
+
+      return exito(consolidarPorSerie(comprobantes, { desde, hasta }), app.meta(peticion));
+    },
+  );
+
   app.get(
     '/comprobantes/pendientes',
     {

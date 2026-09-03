@@ -31,7 +31,7 @@ aprendizaje*). No se reordenan ni se reinterpretan.
 | Remoto (invocación remota) | Todo servicio se invoca por HTTP a través del bus | ✅ |
 | Conceptos básicos de XML, XML Schema | [`contratos/xsd/`](../../contratos/xsd/) — 3 esquemas · validación con `xmllint-wasm` | ✅ |
 | XSLT | [`contratos/xslt/comprobante-a-ubl-v1.xsl`](../../contratos/xslt/) — interno → UBL 2.1 con `saxon-js` | ✅ |
-| XQuery | `packages/xml-kit/src/consulta-xml.ts` — XQuery 3.1 con `fontoxpath` | ✅ |
+| XQuery | `einvoicing-service/src/reporte-xquery.ts` — consolidado por serie con XQuery 3.1 sobre los comprobantes proyectados a XML | ✅ |
 | XPath | Ruteo por contenido del ESB (`esb/src/ruteo.ts`) | ✅ |
 | Servicios web · WSDL · SOAP | [`contratos/wsdl/einvoicing-v1.wsdl`](../../contratos/wsdl/) · servidor SOAP en `einvoicing-service` | ✅ |
 | UDDI | [`registro/`](../../registro/) — modelo `businessEntity → businessService → bindingTemplate → tModel` | ✅ |
