@@ -9,9 +9,7 @@
  * Toda salida sale por el ESB (CLAUDE.md §9.1 regla 8).
  */
 import type { Actividad, ContextoActividad } from '@pos/orquestacion';
-import { errorReglaNegocio } from '@pos/service-kit';
-
-import { exigirExito, type Esb } from './cliente-esb.js';
+import { errorReglaNegocio, exigirExito, type Esb } from '@pos/service-kit';
 import {
   construirDocumentoFiscal,
   CLIENTE_MOSTRADOR,

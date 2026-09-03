@@ -58,3 +58,11 @@ export {
   type ClienteAuditoria,
   type EntradaAuditoria,
 } from './auditoria.js';
+
+export {
+  EsbHttp,
+  exigirExito,
+  type Esb,
+  type Peticion,
+  type RespuestaEsb,
+} from './esb.js';

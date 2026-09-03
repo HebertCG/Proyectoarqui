@@ -8,9 +8,8 @@
  * Su unica dependencia es el ESB. Si el bus no esta, este servicio no sabe
  * hablar con nadie, y eso es deliberado.
  */
-import { crearServicio, cargarConfig, AuditoriaHttp } from '@pos/service-kit';
+import { crearServicio, cargarConfig, AuditoriaHttp, EsbHttp } from '@pos/service-kit';
 
-import { EsbHttp } from './cliente-esb.js';
 import { registrarRutas } from './rutas.js';
 
 const config = cargarConfig({

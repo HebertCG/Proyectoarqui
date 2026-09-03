@@ -175,6 +175,14 @@ const SERVICIOS: DefinicionServicio[] = [
     categorias: ['proceso:venta', 'bpmn'],
   },
   {
+    nombre: 'CierreCaja.Task',
+    descripcion: 'Arqueo y cierre del turno de caja, con drenaje de comprobantes pendientes.',
+    capa: 'tarea',
+    nivel: 'N1',
+    puerto: 3023,
+    categorias: ['proceso:caja', 'bpmn'],
+  },
+  {
     nombre: 'ReservaMulticanal.Task',
     descripcion: 'Reserva por canal digital validada contra disponibilidad real.',
     capa: 'tarea',

@@ -7,10 +7,16 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { crearServicio, cargarConfig, AuditoriaConsola } from '@pos/service-kit';
+import {
+  crearServicio,
+  cargarConfig,
+  AuditoriaConsola,
+  type Esb,
+  type Peticion,
+  type RespuestaEsb,
+} from '@pos/service-kit';
 
 import { registrarRutas } from '../src/rutas.js';
-import type { Esb, Peticion, RespuestaEsb } from '../src/cliente-esb.js';
 
 const TICKET = '11111111-1111-4111-8111-111111111111';
 const CLIENTE = 'aaaaaaaa-1111-4111-8111-111111111111';

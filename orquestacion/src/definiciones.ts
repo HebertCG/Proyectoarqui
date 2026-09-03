@@ -17,6 +17,7 @@ const CARPETA_DEFINICIONES = join(AQUI, '..', 'definiciones');
 /** Procesos disponibles. Añadir uno exige añadir su `.bpmn`. */
 export const PROCESOS = {
   PROCESO_VENTA: 'proceso-venta',
+  CIERRE_CAJA: 'cierre-caja',
 } as const;
 
 export type NombreProceso = (typeof PROCESOS)[keyof typeof PROCESOS];

@@ -151,8 +151,8 @@ describe('descubrimiento', () => {
     const r = await buscar();
 
     expect(r.statusCode).toBe(200);
-    // 8 entidad + 3 utilidad + 3 tarea + ESB
-    expect(r.json().meta.total).toBe(15);
+    // 8 entidad + 3 utilidad + 4 tarea + ESB
+    expect(r.json().meta.total).toBe(16);
   });
 
   it('filtra por capa SOA', async () => {
@@ -162,7 +162,7 @@ describe('descubrimiento', () => {
 
     expect(entidad.datos).toHaveLength(8);
     expect(utilidad.datos).toHaveLength(3);
-    expect(tarea.datos).toHaveLength(3);
+    expect(tarea.datos).toHaveLength(4);
   });
 
   it('filtra por nivel de implementación', async () => {
@@ -214,7 +214,7 @@ describe('descubrimiento', () => {
     const reales = (await buscar('?incluirSimulados=false')).json();
 
     expect(reales.datos.every((s: { simulado: boolean }) => !s.simulado)).toBe(true);
-    expect(reales.datos.length).toBeLessThan(15);
+    expect(reales.datos.length).toBeLessThan(16);
   });
 
   it('devuelve lista vacía, no error, cuando nada coincide', async () => {
@@ -308,7 +308,7 @@ describe('retiro — etapa del ciclo de vida (CLAUDE.md §2.2)', () => {
     await app.inject({ method: 'DELETE', url: `/uddi/servicios/${KEY_SALES}` });
 
     const r = await buscar();
-    expect(r.json().meta.total).toBe(14);
+    expect(r.json().meta.total).toBe(15);
   });
 
   it('404 al retirar algo que no existe', async () => {
@@ -368,7 +368,7 @@ describe('inventario consolidado', () => {
   it('resume el inventario por capa, nivel y protocolo', async () => {
     const d = (await app.inject({ method: 'GET', url: '/uddi/inventario' })).json().datos;
 
-    expect(d.total).toBe(15);
+    expect(d.total).toBe(16);
     expect(d.porCapa.entidad).toBe(8);
     expect(d.porNivel.N1).toBeGreaterThan(0);
     // Un solo servicio con SOAP, y por una razón concreta.

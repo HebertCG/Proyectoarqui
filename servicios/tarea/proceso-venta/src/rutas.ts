@@ -9,11 +9,10 @@
  */
 import { Type } from '@sinclair/typebox';
 import type { FastifyInstance } from 'fastify';
-import { exito, fallo } from '@pos/service-kit';
+import { exito, fallo, type Esb } from '@pos/service-kit';
 import { cargarDefinicion, MotorBpmn, PROCESOS, type TrazaProceso } from '@pos/orquestacion';
 
 import { construirActividades } from './actividades.js';
-import type { Esb } from './cliente-esb.js';
 
 /**
  * Las formas de pago del dominio, tal cual las define `Sales & Customer

@@ -1,16 +1,19 @@
 /**
- * Único camino de salida de este servicio: **el ESB**.
+ * Cliente hacia el **ESB**: el único camino de salida de un servicio.
  *
- * Un servicio de tarea orquesta a otros servicios, y esa es justo la situación
- * donde la tentación de llamar punto a punto es más fuerte. No se hace
- * (CLAUDE.md §9.1 regla 8): si el orquestador esquivara el bus, se perdería el
- * ruteo, la mediación y la auditoría — es decir, todo lo que el bus aporta.
+ * Vive aquí y no dentro de un servicio concreto porque lo necesita cualquiera
+ * que hable con otro servicio del inventario — y muy en particular los
+ * servicios de tarea, que es donde más tienta llamar punto a punto porque ya
+ * saben exactamente a quién necesitan. No se hace (CLAUDE.md §9.1 regla 8): si
+ * un orquestador esquivara el bus, se perderían el ruteo, la mediación y la
+ * auditoría, es decir todo lo que el bus aporta.
  *
  * Aquí no hay lógica de negocio: se traduce entre el envelope del inventario y
  * excepciones de JavaScript, nada más.
  */
-import { errorDependencia, ErrorServicio, CABECERA_CORRELACION } from '@pos/service-kit';
-import type { Envelope } from '@pos/service-kit';
+import { errorDependencia, ErrorServicio } from './errores.js';
+import { CABECERA_CORRELACION } from './servicio.js';
+import type { Envelope } from './envelope.js';
 
 export interface RespuestaEsb<T> {
   estado: number;

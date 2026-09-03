@@ -6,9 +6,9 @@
  * convierte cualquier diagnóstico en adivinanza.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { esErrorServicio } from '@pos/service-kit';
+import { esErrorServicio } from '../src/errores.js';
 
-import { EsbHttp, exigirExito, type RespuestaEsb } from '../src/cliente-esb.js';
+import { EsbHttp, exigirExito, type RespuestaEsb } from '../src/esb.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json' };
 

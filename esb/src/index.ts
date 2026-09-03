@@ -21,6 +21,7 @@ const urlSalesCustomer = process.env['SALES_CUSTOMER_URL'] ?? 'http://localhost:
 const urlEInvoicing = process.env['EINVOICING_URL'] ?? 'http://localhost:3005';
 const urlRegistro = process.env['REGISTRO_URL'] ?? 'http://localhost:3010';
 const urlProcesoVenta = process.env['PROCESO_VENTA_URL'] ?? 'http://localhost:3020';
+const urlCierreCaja = process.env['CIERRE_CAJA_URL'] ?? 'http://localhost:3023';
 
 /**
  * Tabla de ruteo declarativa. Añadir un servicio al inventario no debe exigir
@@ -72,6 +73,13 @@ const RUTAS: Ruta[] = [
     prefijo: '/procesos/venta',
     servicio: 'ProcesoVenta.Task',
     destino: urlProcesoVenta,
+  },
+  {
+    id: 'cierre-caja',
+    metodos: ['GET', 'POST'],
+    prefijo: '/procesos/cierre-caja',
+    servicio: 'CierreCaja.Task',
+    destino: urlCierreCaja,
   },
   // Descubrimiento de servicios. El bus lo rutea como cualquier otro servicio:
   // el registro no es un caso especial del inventario.
