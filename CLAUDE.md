@@ -572,6 +572,32 @@ Cubre sesiones 31–34 + consolidación total. **Producto: sistema completo, ope
 
 ---
 
+### 9.4 Control de versiones — UN COMMIT POR PASO
+
+**Regla dura:** cada paso, cambio o corrección se commitea por separado. No se
+acumulan varios cambios en un commit grande.
+
+| Situación | Acción |
+| :--- | :--- |
+| Se implementa algo nuevo | `feat: <qué se implementó>` |
+| Se corrige un fallo | `fix: <qué se arregló>` |
+| Se cambia documentación | `docs: <qué documento>` |
+| Se añaden o ajustan pruebas | `test: <qué se probó>` |
+| Configuración, infraestructura, tooling | `chore:` o `build:` |
+| Reestructuración sin cambio de comportamiento | `refactor:` |
+
+**Nombres genéricos y descriptivos**: el título dice *qué se hizo*, en una línea.
+El cuerpo explica *por qué*, cuando el porqué no es evidente.
+
+**Antes de cada commit:** las pruebas del paquete tocado deben pasar. Un commit
+que rompe la suite deja el historial inservible para volver atrás.
+
+**Versiones marcadas:** cada hito relevante lleva un tag anotado
+(`v0.1.0-n1-operativo`), para poder volver a un punto estable sin buscar entre
+commits.
+
+---
+
 ## 10. Matriz de Trazabilidad — Formato Obligatorio
 
 Se mantiene en `docs/trazabilidad/` y se actualiza en cada hito.
